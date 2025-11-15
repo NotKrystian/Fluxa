@@ -2,8 +2,6 @@
  * Multi-Chain Deployment Script
  * 
  * Deploys LiquidityVault system to multiple chains:
- * - Ethereum Sepolia (Testnet)
- * - BSC Testnet
  * - Arc Testnet
  * 
  * Automatically saves addresses to .env files
@@ -22,25 +20,11 @@ const __dirname = path.dirname(__filename);
 
 // Chain configurations
 const CHAINS = {
-  sepolia: {
-    name: "Ethereum Sepolia",
-    rpcUrl: process.env.SEPOLIA_RPC_URL || "https://rpc.sepolia.org",
-    chainId: 11155111,
-    usdc: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238", // Sepolia USDC
-    explorer: "https://sepolia.etherscan.io"
-  },
-  bscTestnet: {
-    name: "BSC Testnet",
-    rpcUrl: process.env.BSC_TESTNET_RPC_URL || "https://data-seed-prebsc-1-s1.binance.org:8545",
-    chainId: 97,
-    usdc: "0x64544969ed7EBf5f083679233325356EbE738930", // BSC Testnet USDC
-    explorer: "https://testnet.bscscan.com"
-  },
   arc: {
     name: "Arc Testnet",
     rpcUrl: process.env.ARC_RPC_URL || "https://rpc.testnet.arc.network",
     chainId: 5042002,
-    usdc: null, // Will deploy mock
+    usdc: process.env.ARC_USDC_ADDRESS || "0x3600000000000000000000000000000000000000", // Real USDC on Arc
     explorer: "https://testnet.arcscan.net"
   }
 };

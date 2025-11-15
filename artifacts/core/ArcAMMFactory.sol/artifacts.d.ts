@@ -15,7 +15,7 @@ export interface ArcAMMFactory$Type {
   readonly deployedLinkReferences: {};
   readonly immutableReferences: {};
   readonly inputSourceName: "project/core/ArcAMMFactory.sol";
-  readonly buildInfoId: "solc-0_8_20-a8cbf2a69aedf980ee152c67bcdacb8ac43f79c8";
+  readonly buildInfoId: "solc-0_8_20-e66ff15ed3fc38f38d2c14f03b1fe5a96abebf22";
 };
 
 import "hardhat/types/artifacts";

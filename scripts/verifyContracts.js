@@ -1,9 +1,8 @@
 /**
- * Verify deployed contracts on Arc Testnet and Sepolia
+ * Verify deployed contracts on Arc Testnet
  * 
  * Usage:
  *   npx hardhat run scripts/verifyContracts.js --network arcTestnet
- *   npx hardhat run scripts/verifyContracts.js --network sepolia
  */
 
 import hre from "hardhat";
@@ -64,13 +63,13 @@ async function main() {
   console.log(`VERIFYING CONTRACTS ON ${network.toUpperCase()}`);
   console.log(`${"=".repeat(70)}\n`);
 
-  if (network !== "arcTestnet" && network !== "sepolia") {
+  if (network !== "arcTestnet") {
     console.error(`❌ Unsupported network: ${network}`);
-    console.log(`Supported networks: arcTestnet, sepolia`);
+    console.log(`Supported networks: arcTestnet`);
     return;
   }
 
-  const chain = network === "arcTestnet" ? "arc" : "sepolia";
+  const chain = "arc";
   const addresses = getDeployedAddresses(chain);
   const deployer = await getDeployerAddress();
 
@@ -209,11 +208,7 @@ async function main() {
 
   console.log(`\n✅ Verification complete!`);
   console.log(`\nView verified contracts at:`);
-  if (network === "arcTestnet") {
-    console.log(`   https://testnet.arcscan.app/address/<CONTRACT_ADDRESS>`);
-  } else {
-    console.log(`   https://sepolia.etherscan.io/address/<CONTRACT_ADDRESS>`);
-  }
+  console.log(`   https://testnet.arcscan.net/address/<CONTRACT_ADDRESS>`);
 }
 
 main()

@@ -18,6 +18,8 @@ import { RouteOptimizer } from './services/RouteOptimizer.js';
 import { CCTPCoordinator } from './services/CCTPCoordinator.js';
 import { GatewayCoordinator } from './services/GatewayCoordinator.js';
 import { RebalancingEngine } from './services/RebalancingEngine.js';
+import { LPMigrationService } from './services/LPMigrationService.js';
+import { PoolRebasingService } from './services/PoolRebasingService.js';
 import { TokenRegistryService } from './services/TokenRegistryService.js';
 
 dotenv.config({ path: '../.env' });
@@ -36,6 +38,8 @@ const routeOptimizer = new RouteOptimizer(lpMonitor);
 const cctpCoordinator = new CCTPCoordinator();
 const gatewayCoordinator = new GatewayCoordinator(tokenRegistry);
 const rebalancingEngine = new RebalancingEngine(lpMonitor, cctpCoordinator, gatewayCoordinator);
+const lpMigrationService = new LPMigrationService(lpMonitor, cctpCoordinator, gatewayCoordinator);
+const poolRebasingService = new PoolRebasingService(lpMonitor, cctpCoordinator, gatewayCoordinator);
 
 // Health check
 app.get('/health', (req, res) => {
@@ -194,6 +198,19 @@ async function executeMultiChainSwap({ route, recipient, minAmountOut }) {
   const steps = [];
 
   try {
+    // Step 0: Migrate LP pools from remote chains to Arc (if multi-chain route)
+    if (route.requiresMultiChain && route.selectedRoute?.remoteChains?.length > 0) {
+      steps.push({ step: 'lp_migration', status: 'in_progress' });
+      
+      try {
+        const migrationResult = await lpMigrationService.migratePoolsToArc(route, recipient);
+        steps.push({ step: 'lp_migration', status: 'complete', result: migrationResult });
+      } catch (error) {
+        console.error('[EXECUTION] LP migration failed, continuing with existing liquidity:', error.message);
+        steps.push({ step: 'lp_migration', status: 'failed', error: error.message, continue: true });
+      }
+    }
+
     // Step 1: Pull USDC via CCTP if needed (using Fast Attestation)
     if (route.cctpTransfers && route.cctpTransfers.length > 0) {
       steps.push({ step: 'cctp_initiate', status: 'in_progress' });
@@ -255,7 +272,20 @@ async function executeMultiChainSwap({ route, recipient, minAmountOut }) {
     
     steps.push({ step: 'arc_swap', status: 'complete', result: swapResult });
 
-    // Step 4: Trigger rebalancing
+    // Step 4: Rebase pools to same FLX price (if multi-chain route was used)
+    if (route.requiresMultiChain && route.selectedRoute?.remoteChains?.length > 0) {
+      steps.push({ step: 'pool_rebasing', status: 'in_progress' });
+      
+      try {
+        const rebaseResult = await poolRebasingService.rebasePoolsToTargetPrice(swapResult, route);
+        steps.push({ step: 'pool_rebasing', status: 'complete', result: rebaseResult });
+      } catch (error) {
+        console.error('[EXECUTION] Pool rebasing failed:', error.message);
+        steps.push({ step: 'pool_rebasing', status: 'failed', error: error.message, continue: true });
+      }
+    }
+
+    // Step 5: Trigger rebalancing (for liquidity ratio balancing)
     steps.push({ step: 'rebalance', status: 'in_progress' });
     
     const rebalancePlan = await rebalancingEngine.createPlan(route, swapResult);
@@ -716,6 +746,51 @@ app.get('/api/cctp/supported-chains', async (req, res) => {
 // ============================================================================
 // Gateway Endpoints (for Circle Wallet integration)
 // ============================================================================
+
+/**
+ * POST /api/gateway/distribute
+ * Distribute wrapped tokens to multiple destination chains via Gateway
+ * Used for initial LP setup
+ */
+app.post('/api/gateway/distribute', async (req, res) => {
+  try {
+    const { sourceChain, tokenAddress, amount, destinationChains, depositor, recipient } = req.body;
+    
+    if (!sourceChain || !tokenAddress || !amount || !destinationChains || !depositor) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Missing required fields: sourceChain, tokenAddress, amount, destinationChains, depositor' 
+      });
+    }
+
+    if (!Array.isArray(destinationChains) || destinationChains.length === 0) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'destinationChains must be a non-empty array' 
+      });
+    }
+
+    console.log(`[API] Gateway distribution request:`);
+    console.log(`  Source: ${sourceChain}`);
+    console.log(`  Token: ${tokenAddress}`);
+    console.log(`  Amount: ${amount}`);
+    console.log(`  Destinations: ${destinationChains.join(', ')}`);
+
+    const result = await gatewayCoordinator.distributeWrappedTokens({
+      sourceChain,
+      tokenAddress,
+      amount,
+      destinationChains,
+      depositor,
+      recipient: recipient || depositor
+    });
+
+    res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Error distributing tokens via Gateway:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
 
 /**
  * GET /api/gateway/balance/:address/:token

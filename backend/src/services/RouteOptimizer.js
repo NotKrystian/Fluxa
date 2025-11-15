@@ -22,24 +22,49 @@ export class RouteOptimizer {
         flx: process.env.ARC_FLX_TOKEN || '',
         usdc: process.env.ARC_USDC_ADDRESS || '0x3600000000000000000000000000000000000000'
       },
-      sepolia: {
-        flx: process.env.SEPOLIA_FLX_TOKEN || '',
-        // Real USDC on Sepolia testnet (Circle-supported)
-        usdc: process.env.SEPOLIA_USDC_ADDRESS || '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238'
+      base: {
+        flx: process.env.BASE_SEPOLIA_FLX_TOKEN || process.env.BASE_FLX_TOKEN || '',
+        usdc: process.env.BASE_SEPOLIA_USDC_ADDRESS || process.env.BASE_USDC_ADDRESS || '0x036CbD53842c5426634e7929541eC2318f3dCF7e'
+      },
+      basesepolia: {
+        flx: process.env.BASE_SEPOLIA_FLX_TOKEN || process.env.BASE_FLX_TOKEN || '',
+        usdc: process.env.BASE_SEPOLIA_USDC_ADDRESS || process.env.BASE_USDC_ADDRESS || '0x036CbD53842c5426634e7929541eC2318f3dCF7e'
+      },
+      'base-sepolia': {
+        flx: process.env.BASE_SEPOLIA_FLX_TOKEN || process.env.BASE_FLX_TOKEN || '',
+        usdc: process.env.BASE_SEPOLIA_USDC_ADDRESS || process.env.BASE_USDC_ADDRESS || '0x036CbD53842c5426634e7929541eC2318f3dCF7e'
+      },
+      polygon: {
+        flx: process.env.POLYGON_AMOY_FLX_TOKEN || process.env.POLYGON_FLX_TOKEN || '',
+        usdc: process.env.POLYGON_AMOY_USDC_ADDRESS || process.env.POLYGON_USDC_ADDRESS || ''
+      },
+      'polygon-amoy': {
+        flx: process.env.POLYGON_AMOY_FLX_TOKEN || process.env.POLYGON_FLX_TOKEN || '',
+        usdc: process.env.POLYGON_AMOY_USDC_ADDRESS || process.env.POLYGON_USDC_ADDRESS || ''
       }
     };
     
     console.log('[ROUTE_OPTIMIZER] Token address mappings:');
     console.log('  Arc - FLX:', this.tokenAddresses.arc.flx || 'NOT CONFIGURED');
     console.log('  Arc - USDC:', this.tokenAddresses.arc.usdc || 'NOT CONFIGURED');
-    console.log('  Sepolia - FLX:', this.tokenAddresses.sepolia.flx || 'NOT CONFIGURED');
-    console.log('  Sepolia - USDC:', this.tokenAddresses.sepolia.usdc || 'NOT CONFIGURED');
+    console.log('  Base Sepolia - FLX:', this.tokenAddresses.base.flx || 'NOT CONFIGURED');
+    console.log('  Base Sepolia - USDC:', this.tokenAddresses.base.usdc || 'NOT CONFIGURED');
+    console.log('  Polygon Amoy - FLX:', this.tokenAddresses['polygon-amoy'].flx || 'NOT CONFIGURED');
+    console.log('  Polygon Amoy - USDC:', this.tokenAddresses['polygon-amoy'].usdc || 'NOT CONFIGURED');
     
-    // Warn if Sepolia addresses are missing
-    if (!this.tokenAddresses.sepolia.flx || !this.tokenAddresses.sepolia.usdc) {
-      console.warn('⚠️  WARNING: Sepolia token addresses not fully configured!');
-      console.warn('   Set SEPOLIA_FLX_TOKEN and SEPOLIA_USDC_ADDRESS in .env');
-    }
+    // Gas cost estimates per chain (in USD)
+    // These will be used to calculate total gas for multi-chain routes
+    this.chainGasCostsUSD = {
+      arc: 0.0002, // Local gas (very cheap on Arc)
+      base: 0.001, // Base Sepolia gas estimate
+      'base-sepolia': 0.001,
+      basesepolia: 0.001,
+      polygon: 0.001, // Polygon Amoy gas estimate
+      'polygon-amoy': 0.001
+    };
+    
+    // CCTP transfer fee (per transfer, in USD)
+    this.cctpTransferFeeUSD = 0.10;
   }
   
   /**
@@ -70,11 +95,34 @@ export class RouteOptimizer {
 
   /**
    * Get FLX price in USDC from a pool
-   * Price = USDC reserves / FLX reserves
+   * Price = USDC reserves / FLX reserves (variable per pool)
+   * 
+   * @param {Object} pool - Pool object with reserves
+   * @returns {number} Price per FLX in USDC
    */
   getFlxPrice(pool) {
-    const reserveUSDC = BigInt(pool.reserve1 || '0'); // USDC is token1
-    const reserveFLX = BigInt(pool.reserve0 || '0'); // FLX is token0
+    // Determine which reserve is USDC and which is FLX
+    // USDC typically has 6 decimals, FLX has 18 decimals
+    // We need to check which token is which based on pool structure
+    
+    let reserveUSDC, reserveFLX;
+    
+    // If pool has reserveIn/reserveOut (from matching), use those
+    if (pool.reserveIn && pool.reserveOut) {
+      // Check which token is USDC based on decimals or token addresses
+      const tokenIn = pool.tokenIn || pool.token0;
+      const tokenOut = pool.tokenOut || pool.token1;
+      
+      // USDC typically has 6 decimals, FLX has 18
+      // For now, assume token0 is FLX (18 decimals) and token1 is USDC (6 decimals)
+      // This matches the vault structure: token0 = projectToken (FLX), token1 = usdc (USDC)
+      reserveFLX = BigInt(pool.reserve0 || '0');
+      reserveUSDC = BigInt(pool.reserve1 || '0');
+    } else {
+      // Fallback to reserve0/reserve1
+      reserveFLX = BigInt(pool.reserve0 || '0');
+      reserveUSDC = BigInt(pool.reserve1 || '0');
+    }
     
     if (reserveFLX === 0n) return 0;
     
@@ -84,7 +132,8 @@ export class RouteOptimizer {
     
     if (flxAmount === 0) return 0;
     
-    return usdcAmount / flxAmount; // Price per FLX in USDC
+    const price = usdcAmount / flxAmount; // Price per FLX in USDC
+    return price;
   }
 
   /**
@@ -279,7 +328,8 @@ export class RouteOptimizer {
         grossOutput: grossOutput,
         gasCostUSD: gasCostUSD,
         gasCostToken: gasCostToken,
-        netOutput: netOutput
+        netOutput: netOutput,
+        tokenOut: tokenOut // Store for formatting
       });
     } else {
       console.log(`   ⚠️  No local pools available`);
@@ -305,8 +355,15 @@ export class RouteOptimizer {
         // Calculate gross output from all pools
         const grossOutput = this.calculateTotalOutput(allPoolsForOption, amountIn);
         
-        // Calculate gas cost: local gas + multi-chain fee (10 cents)
-        const gasCostUSD = this.localGasCostUSD + this.multiChainFeeUSD;
+        // Calculate gas cost: local gas + per-chain gas costs + CCTP fees
+        // Each remote chain requires: local gas + CCTP transfer fee
+        let gasCostUSD = this.chainGasCostsUSD[sourceChain] || this.localGasCostUSD;
+        
+        // Add gas and CCTP fees for each remote chain
+        for (const remoteChain of remoteChains) {
+          const chainGas = this.chainGasCostsUSD[remoteChain] || 0.001;
+          gasCostUSD += chainGas + this.cctpTransferFeeUSD;
+        }
         
         // Convert gas cost to token terms
         const gasCostToken = this.convertGasCostToToken(gasCostUSD, tokenOut, validPools);
@@ -353,21 +410,48 @@ export class RouteOptimizer {
     routingOptions.forEach((option, i) => {
       const isBest = i === 0;
       const marker = isBest ? '🏆 BEST' : `   ${i + 1}.`;
+      const grossOutputFormatted = option.tokenOut?.toLowerCase().includes('usdc') 
+        ? (Number(option.grossOutput) / 1e6).toFixed(6) + ' USDC'
+        : (Number(option.grossOutput) / 1e18).toFixed(6) + ' FLX';
+      const netOutputFormatted = option.tokenOut?.toLowerCase().includes('usdc')
+        ? (Number(option.netOutput) / 1e6).toFixed(6) + ' USDC'
+        : (Number(option.netOutput) / 1e18).toFixed(6) + ' FLX';
+      const gasCostTokenFormatted = option.tokenOut?.toLowerCase().includes('usdc')
+        ? (Number(option.gasCostToken) / 1e6).toFixed(6) + ' USDC'
+        : (Number(option.gasCostToken) / 1e18).toFixed(6) + ' FLX';
+      
       console.log(`${marker} ${option.name}`);
       console.log(`      Chains: ${option.chains.join(', ')}`);
-      console.log(`      Gross Output: ${option.grossOutput.toString()} (raw)`);
-      console.log(`      Gas Cost: $${option.gasCostUSD.toFixed(2)} (${option.gasCostToken.toString()} tokens)`);
-      console.log(`      Net Output: ${option.netOutput.toString()} (raw)`);
+      console.log(`      Pools: ${option.pools.length} (${option.pools.map(p => p.chain).join(', ')})`);
+      console.log(`      Gross Output: ${grossOutputFormatted} (${option.grossOutput.toString()} raw)`);
+      console.log(`      Gas Cost: $${option.gasCostUSD.toFixed(4)} USD = ${gasCostTokenFormatted}`);
+      console.log(`      Net Output: ${netOutputFormatted} (${option.netOutput.toString()} raw)`);
+      
+      // Show detailed breakdown for best option
+      if (isBest && option.pools.length > 0) {
+        console.log(`      Pool Details:`);
+        option.pools.forEach((pool, pIdx) => {
+          const flxPrice = this.getFlxPrice(pool);
+          console.log(`        Pool ${pIdx + 1} (${pool.chain}): FLX Price = ${flxPrice.toFixed(6)} USDC/FLX`);
+        });
+      }
     });
     console.log('');
 
     const bestOption = routingOptions[0];
     const isMultiChain = bestOption.chains.length > 1 || bestOption.remoteChains.length > 0;
     
+    // Format outputs for display
+    const isUSDC = tokenOut?.toLowerCase().includes('usdc') || tokenOut?.toLowerCase() === '0x3600000000000000000000000000000000000000';
+    const decimals = isUSDC ? 6 : 18;
+    const grossOutputFormatted = (Number(bestOption.grossOutput) / Math.pow(10, decimals)).toFixed(6);
+    const netOutputFormatted = (Number(bestOption.netOutput) / Math.pow(10, decimals)).toFixed(6);
+    
     console.log(`✅ Selected: ${bestOption.name}`);
     console.log(`   Chains: ${bestOption.chains.join(' → ')}`);
-    console.log(`   Gross Output: ${bestOption.grossOutput.toString()} (raw)`);
-    console.log(`   Net Output: ${bestOption.netOutput.toString()} (raw)`);
+    console.log(`   Gross Output: ${grossOutputFormatted} ${isUSDC ? 'USDC' : 'FLX'} (${bestOption.grossOutput.toString()} raw)`);
+    console.log(`   Net Output: ${netOutputFormatted} ${isUSDC ? 'USDC' : 'FLX'} (${bestOption.netOutput.toString()} raw)`);
+    console.log(`   Gas Cost: $${bestOption.gasCostUSD.toFixed(4)} USD`);
     console.log(`   Multi-Chain: ${isMultiChain}`);
     console.log('═══════════════════════════════════════════════════════════════\n');
 
@@ -381,17 +465,50 @@ export class RouteOptimizer {
       totalAmountIn: amountIn,
       executionChain: sourceChain,
       estimatedOutput: bestOption.grossOutput.toString(),
+      estimatedOutputFormatted: grossOutputFormatted,
       netOutput: bestOption.netOutput.toString(),
+      netOutputFormatted: netOutputFormatted,
       totalGasCost: bestOption.gasCostUSD,
+      totalGasCostFormatted: `$${bestOption.gasCostUSD.toFixed(4)}`,
       gasCostToken: bestOption.gasCostToken.toString(),
-      routingOptions: routingOptions.map(opt => ({
-        name: opt.name,
-        netOutput: opt.netOutput.toString(),
-        grossOutput: opt.grossOutput.toString(),
-        gasCostUSD: opt.gasCostUSD,
-        chains: opt.chains,
-        remoteChains: opt.remoteChains || []
-      })),
+      gasCostTokenFormatted: (Number(bestOption.gasCostToken) / Math.pow(10, decimals)).toFixed(6),
+      selectedRoute: {
+        name: bestOption.name,
+        chains: bestOption.chains,
+        remoteChains: bestOption.remoteChains || [],
+        pools: bestOption.pools.map(p => ({
+          chain: p.chain,
+          address: p.poolAddress,
+          flxPrice: this.getFlxPrice(p).toFixed(6),
+          reserve0: p.reserve0,
+          reserve1: p.reserve1,
+          reserveIn: p.reserveIn,
+          reserveOut: p.reserveOut
+        }))
+      },
+      routingOptions: routingOptions.map(opt => {
+        const optIsUSDC = tokenOut?.toLowerCase().includes('usdc') || tokenOut?.toLowerCase() === '0x3600000000000000000000000000000000000000';
+        const optDecimals = optIsUSDC ? 6 : 18;
+        return {
+          name: opt.name,
+          netOutput: opt.netOutput.toString(),
+          netOutputFormatted: (Number(opt.netOutput) / Math.pow(10, optDecimals)).toFixed(6),
+          grossOutput: opt.grossOutput.toString(),
+          grossOutputFormatted: (Number(opt.grossOutput) / Math.pow(10, optDecimals)).toFixed(6),
+          gasCostUSD: opt.gasCostUSD,
+          gasCostUSDFormatted: `$${opt.gasCostUSD.toFixed(4)}`,
+          gasCostToken: opt.gasCostToken.toString(),
+          gasCostTokenFormatted: (Number(opt.gasCostToken) / Math.pow(10, optDecimals)).toFixed(6),
+          chains: opt.chains,
+          remoteChains: opt.remoteChains || [],
+          poolCount: opt.pools.length,
+          pools: opt.pools.map(p => ({
+            chain: p.chain,
+            address: p.poolAddress,
+            flxPrice: this.getFlxPrice(p).toFixed(6)
+          }))
+        };
+      }),
       ...route
     };
   }

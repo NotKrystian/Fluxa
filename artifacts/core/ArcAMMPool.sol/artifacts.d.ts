@@ -15,7 +15,7 @@ export interface ArcAMMPool$Type {
   readonly deployedLinkReferences: {};
   readonly immutableReferences: {"1840":[{"length":32,"start":2433},{"length":32,"start":2517}],"1843":[{"length":32,"start":345},{"length":32,"start":669},{"length":32,"start":1386},{"length":32,"start":2622},{"length":32,"start":2992},{"length":32,"start":3584},{"length":32,"start":3677},{"length":32,"start":4079},{"length":32,"start":4689},{"length":32,"start":4966},{"length":32,"start":5188},{"length":32,"start":6550}],"1846":[{"length":32,"start":416},{"length":32,"start":704},{"length":32,"start":1421},{"length":32,"start":2365},{"length":32,"start":2586},{"length":32,"start":3029},{"length":32,"start":3726},{"length":32,"start":4163},{"length":32,"start":4743},{"length":32,"start":4851},{"length":32,"start":5033},{"length":32,"start":5223}],"1854":[{"length":32,"start":3876},{"length":32,"start":3950},{"length":32,"start":5474},{"length":32,"start":5548},{"length":32,"start":6230}],"1857":[{"length":32,"start":6129},{"length":32,"start":8153}],"1860":[{"length":32,"start":3396},{"length":32,"start":8226},{"length":32,"start":8294}]};
   readonly inputSourceName: "project/core/ArcAMMPool.sol";
-  readonly buildInfoId: "solc-0_8_20-a8cbf2a69aedf980ee152c67bcdacb8ac43f79c8";
+  readonly buildInfoId: "solc-0_8_20-e66ff15ed3fc38f38d2c14f03b1fe5a96abebf22";
 };
 
 import "hardhat/types/artifacts";

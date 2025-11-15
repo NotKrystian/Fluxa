@@ -22,7 +22,7 @@ process.exit(1);
 
 const RECIPIENT_ADDRESS = '0xe8f14cD50Cfa48e366142815D2b63263849400cE';
 const AMOUNT = '1.0'; // 0.1 USDC
-const SOURCE_CHAIN = 'Ethereum_Sepolia';
+const SOURCE_CHAIN = 'Base_Sepolia';
 const DEST_CHAIN = 'Arc_Testnet';
 
 async function testTransfer() {
@@ -42,7 +42,7 @@ async function testTransfer() {
     }
 
     // Get RPC URLs
-    const sepoliaRpc = process.env.SEPOLIA_RPC_URL || 'https://ethereum-sepolia-rpc.publicnode.com';
+    const baseSepoliaRpc = process.env.BASE_SEPOLIA_RPC_URL || process.env.BASE_RPC_URL || 'https://sepolia.base.org';
     const arcRpc = process.env.ARC_RPC_URL || 'https://rpc.testnet.arc.network';
 
     console.log('✅ Environment variables loaded');
@@ -60,8 +60,8 @@ async function testTransfer() {
         const chainName = viemChain?.name || '';
         let rpcUrl = null;
 
-        if (chainName.includes('Sepolia') || chainName === 'Ethereum_Sepolia') {
-          rpcUrl = sepoliaRpc;
+        if (chainName.includes('Base') && chainName.includes('Sepolia')) {
+          rpcUrl = baseSepoliaRpc;
         } else if (chainName.includes('Arc') || chainName === 'Arc_Testnet') {
           rpcUrl = arcRpc;
         }

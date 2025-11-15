@@ -1,6 +1,6 @@
 /**
  * Real Multi-Chain Vault Deployment
- * Deploys to BSC Testnet and Arc Testnet with actual contracts
+ * Deploys to Arc Testnet with actual contracts
  */
 
 import { ethers } from "ethers";
@@ -15,15 +15,6 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const CHAINS = {
-  sepolia: {
-    name: "Ethereum Sepolia",
-    rpcUrl: process.env.SEPOLIA_RPC_URL || "https://ethereum-sepolia-rpc.publicnode.com",
-    chainId: 11155111,
-    nativeCurrency: "ETH",
-    explorer: "https://sepolia.etherscan.io",
-    // Real USDC on Sepolia
-    usdc: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238"
-  },
   arc: {
     name: "Arc Testnet", 
     rpcUrl: process.env.ARC_RPC_URL || "https://rpc.testnet.arc.network",
@@ -158,11 +149,34 @@ async function deployToChain(chainKey) {
 
   // Deploy ArcMetaRouter
   console.log(`\nDeploying ArcMetaRouter...`);
+  
+  // Validate and normalize USDC address
+  if (!usdcAddress) {
+    throw new Error(`USDC address not set for ${config.name}. Please set ARC_USDC_ADDRESS in .env`);
+  }
+  
+  // Normalize address (checksum format)
+  let normalizedUsdcAddress;
+  try {
+    normalizedUsdcAddress = ethers.getAddress(usdcAddress);
+  } catch (error) {
+    throw new Error(`Invalid USDC address format for ${config.name}: ${usdcAddress}. Error: ${error.message}`);
+  }
+  
+  // Final check - ensure it's not zero address
+  if (normalizedUsdcAddress === ethers.ZeroAddress || normalizedUsdcAddress === '0x0000000000000000000000000000000000000000') {
+    throw new Error(`USDC address cannot be zero address for ${config.name}. Got: ${normalizedUsdcAddress}. Please set ARC_USDC_ADDRESS in .env`);
+  }
+  
+  console.log(`  USDC address: ${normalizedUsdcAddress}`);
+  console.log(`  EURC address: ${normalizedUsdcAddress} (NOTE: Not using EURC, using USDC address for both)`);
+  console.log(`  Fee collector: ${wallet.address}`);
+  
   await sleep(1000); // Rate limit protection
   const Router = new ethers.ContractFactory(artifacts.ArcMetaRouter.abi, artifacts.ArcMetaRouter.bytecode, wallet);
   const router = await Router.deploy(
-    usdcAddress,
-    usdcAddress, // Using USDC for both USDC and EURC for now
+    normalizedUsdcAddress,
+    normalizedUsdcAddress, // NOT using EURC, using USDC address for both (contract requires non-zero)
     ethers.ZeroAddress, // tokenMessenger - will update
     ethers.ZeroAddress, // gatewayWallet - will update
     0, // no fee
@@ -303,19 +317,10 @@ async function main() {
   console.log(`FLUXA REAL MULTI-CHAIN DEPLOYMENT`);
   console.log(`${"=".repeat(70)}\n`);
   console.log(`📋 IMPORTANT: We use REAL USDC tokens only (Circle-supported)`);
-  console.log(`   - Sepolia: Using real USDC (${CHAINS.sepolia.usdc})`);
   console.log(`   - Arc: Using real USDC proxy (${CHAINS.arc.usdc})`);
   console.log(`     Implementation: 0x3910B7cbb3341f1F4bF4cEB66e4A2C8f204FE2b8 (NativeFiatTokenV2_2)\n`);
 
   const deployments = {};
-
-  // Deploy to Sepolia
-  try {
-    const sepoliaDeployment = await deployToChain('sepolia');
-    if (sepoliaDeployment) deployments.sepolia = sepoliaDeployment;
-  } catch (err) {
-    console.error(`Sepolia deployment error:`, err.message);
-  }
 
   // Deploy to Arc
   try {

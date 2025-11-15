@@ -452,49 +452,108 @@ export default function SwapPage() {
                   </p>
                   
                   {/* Selected Route Details */}
-                  <div className="text-sm space-y-1 mb-3">
-                    <div className="flex justify-between">
-                      <span>Routing Through:</span>
-                      <span className="font-medium">{quote.routingOptions?.[0]?.chains?.join(' → ') || (routingType === 'multichain' ? 'Multiple Chains' : 'Arc')}</span>
-                    </div>
-                    {quote.routingOptions?.[0]?.remoteChains && quote.routingOptions[0].remoteChains.length > 0 && (
+                  {quote.selectedRoute && (
+                    <div className="text-sm space-y-2 mb-3">
                       <div className="flex justify-between">
-                        <span>Remote Chains:</span>
-                        <span className="font-medium text-purple-600 dark:text-purple-400">{quote.routingOptions[0].remoteChains.join(', ')}</span>
+                        <span>Routing Through:</span>
+                        <span className="font-medium">{quote.selectedRoute.chains?.join(' → ') || (routingType === 'multichain' ? 'Multiple Chains' : 'Arc')}</span>
                       </div>
-                    )}
-                    <div className="flex justify-between">
-                      <span>Gross Output:</span>
-                      <span className="font-medium">{formatTokenAmount(quote.estimatedOutput || '0', getTokenDecimals(tokenOut))} {getTokenSymbol(tokenOut)}</span>
-                    </div>
-                    {quote.netOutput && (
+                      {quote.selectedRoute.remoteChains && quote.selectedRoute.remoteChains.length > 0 && (
+                        <div className="flex justify-between">
+                          <span>Remote Chains:</span>
+                          <span className="font-medium text-purple-600 dark:text-purple-400">{quote.selectedRoute.remoteChains.join(', ')}</span>
+                        </div>
+                      )}
                       <div className="flex justify-between">
-                        <span>Net Output (after gas):</span>
-                        <span className="font-medium text-green-600 dark:text-green-400">{formatTokenAmount(quote.netOutput, getTokenDecimals(tokenOut))} {getTokenSymbol(tokenOut)}</span>
+                        <span>Pools Used:</span>
+                        <span className="font-medium">{quote.selectedRoute.pools?.length || 0} pool(s)</span>
                       </div>
-                    )}
-                    <div className="flex justify-between">
-                      <span>Gas Cost:</span>
-                      <span className="font-medium">${quote.totalGasCost?.toFixed(2) || '0.00'}</span>
+                      <div className="flex justify-between">
+                        <span>Gross Output:</span>
+                        <span className="font-medium">{quote.estimatedOutputFormatted || formatTokenAmount(quote.estimatedOutput || '0', getTokenDecimals(tokenOut))} {getTokenSymbol(tokenOut)}</span>
+                      </div>
+                      {quote.netOutputFormatted && (
+                        <div className="flex justify-between">
+                          <span>Net Output (after gas):</span>
+                          <span className="font-medium text-green-600 dark:text-green-400">{quote.netOutputFormatted} {getTokenSymbol(tokenOut)}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between">
+                        <span>Gas Cost:</span>
+                        <span className="font-medium">{quote.totalGasCostFormatted || `$${quote.totalGasCost?.toFixed(4) || '0.0000'}`}</span>
+                      </div>
+                      {quote.gasCostTokenFormatted && (
+                        <div className="flex justify-between text-xs text-gray-600 dark:text-gray-400">
+                          <span>Gas Cost (in tokens):</span>
+                          <span>{quote.gasCostTokenFormatted} {getTokenSymbol(tokenOut)}</span>
+                        </div>
+                      )}
+                      
+                      {/* Pool Details */}
+                      {quote.selectedRoute.pools && quote.selectedRoute.pools.length > 0 && (
+                        <div className="mt-3 pt-3 border-t border-gray-300 dark:border-gray-700">
+                          <p className="text-xs font-semibold mb-2">Pool Details:</p>
+                          <div className="space-y-1">
+                            {quote.selectedRoute.pools.map((pool: any, idx: number) => (
+                              <div key={idx} className="text-xs flex justify-between">
+                                <span className="capitalize">{pool.chain} Pool:</span>
+                                <span>FLX Price: {pool.flxPrice} USDC/FLX</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  </div>
+                  )}
 
-                  {/* Why This Route is Better */}
+                  {/* All Routing Options Evaluated */}
                   {quote.routingOptions && quote.routingOptions.length > 1 && (
                     <div className="mt-3 pt-3 border-t border-gray-300 dark:border-gray-700">
-                      <p className="text-xs font-semibold mb-2">Why this route is better:</p>
-                      <div className="text-xs space-y-1">
-                        {quote.routingOptions.slice(0, 3).map((opt: any, idx: number) => (
-                          <div key={idx} className={`flex justify-between ${idx === 0 ? 'text-green-600 dark:text-green-400 font-medium' : 'text-gray-600 dark:text-gray-400'}`}>
-                            <span>{idx === 0 ? '✓ ' : '  '}{opt.name}:</span>
-                            <span>{formatTokenAmount(opt.netOutput, getTokenDecimals(tokenOut))} {getTokenSymbol(tokenOut)} net</span>
-                          </div>
-                        ))}
-                        {quote.routingOptions.length > 3 && (
-                          <div className="text-gray-500 dark:text-gray-500 text-xs">
-                            + {quote.routingOptions.length - 3} more option(s) evaluated
-                          </div>
-                        )}
+                      <p className="text-xs font-semibold mb-2">All Routing Options Evaluated ({quote.routingOptions.length} total):</p>
+                      <div className="text-xs space-y-2 max-h-48 overflow-y-auto">
+                        {quote.routingOptions.map((opt: any, idx: number) => {
+                          const isBest = idx === 0;
+                          return (
+                            <div key={idx} className={`p-2 rounded ${isBest ? 'bg-green-100 dark:bg-green-900/20 border border-green-300 dark:border-green-700' : 'bg-gray-50 dark:bg-gray-800'}`}>
+                              <div className="flex justify-between items-start mb-1">
+                                <span className={`font-medium ${isBest ? 'text-green-700 dark:text-green-400' : 'text-gray-700 dark:text-gray-300'}`}>
+                                  {isBest ? '🏆 ' : `${idx + 1}. `}{opt.name}
+                                </span>
+                                <span className={`font-semibold ${isBest ? 'text-green-700 dark:text-green-400' : 'text-gray-600 dark:text-gray-400'}`}>
+                                  {opt.netOutputFormatted || formatTokenAmount(opt.netOutput, getTokenDecimals(tokenOut))} {getTokenSymbol(tokenOut)}
+                                </span>
+                              </div>
+                              <div className="text-xs text-gray-600 dark:text-gray-400 space-y-0.5">
+                                <div className="flex justify-between">
+                                  <span>Chains:</span>
+                                  <span>{opt.chains?.join(', ') || 'N/A'}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span>Pools:</span>
+                                  <span>{opt.poolCount || 0}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span>Gross:</span>
+                                  <span>{opt.grossOutputFormatted || formatTokenAmount(opt.grossOutput, getTokenDecimals(tokenOut))} {getTokenSymbol(tokenOut)}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span>Gas:</span>
+                                  <span>{opt.gasCostUSDFormatted || `$${opt.gasCostUSD?.toFixed(4) || '0.0000'}`} ({opt.gasCostTokenFormatted || formatTokenAmount(opt.gasCostToken, getTokenDecimals(tokenOut))} {getTokenSymbol(tokenOut)})</span>
+                                </div>
+                                {opt.pools && opt.pools.length > 0 && (
+                                  <div className="mt-1 pt-1 border-t border-gray-200 dark:border-gray-700">
+                                    {opt.pools.map((pool: any, pIdx: number) => (
+                                      <div key={pIdx} className="flex justify-between text-xs">
+                                        <span className="capitalize">{pool.chain}:</span>
+                                        <span>FLX: {pool.flxPrice} USDC/FLX</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   )}

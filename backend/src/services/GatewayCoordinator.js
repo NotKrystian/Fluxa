@@ -25,10 +25,16 @@ export class GatewayCoordinator {
     this.gatewayAddresses = {
       ethereum: process.env.ETHEREUM_GATEWAY_WALLET || '0x0077777d7EBA4688BDeF3E311b846F25870A19B9', // Sepolia
       sepolia: process.env.SEPOLIA_GATEWAY_WALLET || '0x0077777d7EBA4688BDeF3E311b846F25870A19B9', // Sepolia
-      base: process.env.BASE_GATEWAY_WALLET || ethers.ZeroAddress,
-      polygon: process.env.POLYGON_GATEWAY_WALLET || ethers.ZeroAddress,
+      base: process.env.BASE_GATEWAY_WALLET || process.env.BASE_SEPOLIA_GATEWAY_WALLET || ethers.ZeroAddress,
+      basesepolia: process.env.BASE_SEPOLIA_GATEWAY_WALLET || process.env.BASE_GATEWAY_WALLET || ethers.ZeroAddress,
+      'base-sepolia': process.env.BASE_SEPOLIA_GATEWAY_WALLET || process.env.BASE_GATEWAY_WALLET || ethers.ZeroAddress,
+      polygon: process.env.POLYGON_GATEWAY_WALLET || process.env.POLYGON_AMOY_GATEWAY_WALLET || ethers.ZeroAddress,
+      'polygon-amoy': process.env.POLYGON_AMOY_GATEWAY_WALLET || process.env.POLYGON_GATEWAY_WALLET || ethers.ZeroAddress,
       arc: process.env.ARC_GATEWAY_WALLET || '0x0077777d7EBA4688BDeF3E311b846F25870A19B9' // Arc testnet
     };
+    
+    // Supported chains for Gateway operations
+    this.supportedChains = ['arc', 'base', 'basesepolia', 'base-sepolia', 'polygon', 'polygon-amoy'];
 
     // Private key for signing transactions
     this.privateKey = process.env.GATEWAY_PRIVATE_KEY || process.env.CCTP_PRIVATE_KEY;
@@ -552,6 +558,78 @@ export class GatewayCoordinator {
       if (key.startsWith(`${depositor}:`)) {
         this.balanceCache.delete(key);
       }
+    }
+  }
+
+  /**
+   * Distribute wrapped tokens to multiple destination chains
+   * Used for initial LP setup: deposit on source chain, withdraw on all destination chains
+   * 
+   * @param {Object} params
+   * @param {string} params.sourceChain - Chain where tokens are deposited (typically Arc)
+   * @param {string} params.tokenAddress - Token address on source chain
+   * @param {string} params.amount - Total amount to distribute
+   * @param {string[]} params.destinationChains - Array of chains to distribute to
+   * @param {string} params.depositor - Address depositing tokens
+   * @param {string} params.recipient - Address receiving wrapped tokens on destination chains
+   * @returns {Promise<Object>} Distribution results per chain
+   */
+  async distributeWrappedTokens({ sourceChain, tokenAddress, amount, destinationChains, depositor, recipient }) {
+    console.log(`\n[GATEWAY] Starting wrapped token distribution`);
+    console.log(`  Source: ${sourceChain}`);
+    console.log(`  Token: ${tokenAddress}`);
+    console.log(`  Total Amount: ${amount}`);
+    console.log(`  Destinations: ${destinationChains.join(', ')}`);
+    
+    const results = {
+      deposit: null,
+      withdrawals: {},
+      errors: {}
+    };
+    
+    try {
+      // Step 1: Deposit tokens to Gateway on source chain
+      console.log(`\n[GATEWAY] Step 1: Depositing ${amount} tokens to Gateway on ${sourceChain}...`);
+      results.deposit = await this.deposit({
+        chain: sourceChain,
+        token: tokenAddress,
+        amount: amount,
+        depositor: depositor
+      });
+      console.log(`  ✓ Deposit successful: ${results.deposit.id || results.deposit.txHash}`);
+      
+      // Step 2: Withdraw wrapped tokens on each destination chain
+      const amountPerChain = (BigInt(amount) / BigInt(destinationChains.length)).toString();
+      console.log(`\n[GATEWAY] Step 2: Distributing ${amountPerChain} wrapped tokens to each destination chain...`);
+      
+      for (const destChain of destinationChains) {
+        try {
+          console.log(`  Withdrawing to ${destChain}...`);
+          const withdrawal = await this.withdraw({
+            token: tokenAddress,
+            amount: amountPerChain,
+            targetChain: destChain,
+            recipient: recipient || depositor,
+            depositor: depositor
+          });
+          results.withdrawals[destChain] = withdrawal;
+          console.log(`  ✓ Withdrawal to ${destChain} successful: ${withdrawal.id || withdrawal.txHash}`);
+        } catch (error) {
+          console.error(`  ✗ Withdrawal to ${destChain} failed:`, error.message);
+          results.errors[destChain] = error.message;
+        }
+      }
+      
+      console.log(`\n[GATEWAY] Distribution complete:`);
+      console.log(`  Successful withdrawals: ${Object.keys(results.withdrawals).length}/${destinationChains.length}`);
+      if (Object.keys(results.errors).length > 0) {
+        console.log(`  Errors: ${Object.keys(results.errors).join(', ')}`);
+      }
+      
+      return results;
+    } catch (error) {
+      console.error(`[GATEWAY] Distribution failed:`, error);
+      throw error;
     }
   }
 }
