@@ -1,4 +1,4 @@
-// File: /Users/nk/Desktop/Github/ArcProject/Fluxa/frontend/app/deploy/page.tsx
+// File: /Users/yin/Documents/projects/Programming/Fluxa/fluxa-github/frontend/app/deploy/page.tsx
 import * as entry from '../../../../app/deploy/page.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 
