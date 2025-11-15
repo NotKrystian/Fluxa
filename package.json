@@ -1,0 +1,26 @@
+{
+  "name": "fluxa",
+  "scripts": {
+    "deploy": "node scripts/deployRealVaults.js",
+    "compile": "npx hardhat compile",
+    "verify:arc": "npx hardhat run scripts/verifyContracts.js --network arcTestnet",
+    "verify:sepolia": "npx hardhat run scripts/verifyContracts.js --network sepolia",
+    "backend": "cd backend && npm start",
+    "frontend": "cd frontend && npm run dev"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-chai-matchers": "^2.1.0",
+    "@nomicfoundation/hardhat-ethers": "^4.0.3",
+    "@nomicfoundation/hardhat-network-helpers": "^3.0.3",
+    "@nomicfoundation/hardhat-toolbox": "^6.1.0",
+    "@nomicfoundation/hardhat-verify": "^3.0.7",
+    "chai": "^6.2.1",
+    "dotenv": "^17.2.3",
+    "ethers": "^6.15.0",
+    "hardhat": "^3.0.14"
+  },
+  "type": "module",
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.4.0"
+  }
+}

@@ -1,0 +1,102 @@
+{
+  "_format": "hh3-artifact-1",
+  "contractName": "ITokenMessenger",
+  "sourceName": "core/ArcMetaRouter.sol",
+  "abi": [
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "amount",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint32",
+          "name": "destinationDomain",
+          "type": "uint32"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "mintRecipient",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "address",
+          "name": "burnToken",
+          "type": "address"
+        }
+      ],
+      "name": "depositForBurn",
+      "outputs": [
+        {
+          "internalType": "uint64",
+          "name": "",
+          "type": "uint64"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "amount",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint32",
+          "name": "destinationDomain",
+          "type": "uint32"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "mintRecipient",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "address",
+          "name": "burnToken",
+          "type": "address"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "destinationCaller",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "uint256",
+          "name": "maxFee",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint32",
+          "name": "minFinalityThreshold",
+          "type": "uint32"
+        },
+        {
+          "internalType": "bytes",
+          "name": "hookData",
+          "type": "bytes"
+        }
+      ],
+      "name": "depositForBurnWithHook",
+      "outputs": [
+        {
+          "internalType": "uint64",
+          "name": "",
+          "type": "uint64"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    }
+  ],
+  "bytecode": "0x",
+  "deployedBytecode": "0x",
+  "linkReferences": {},
+  "deployedLinkReferences": {},
+  "immutableReferences": {},
+  "inputSourceName": "project/core/ArcMetaRouter.sol",
+  "buildInfoId": "solc-0_8_20-a8cbf2a69aedf980ee152c67bcdacb8ac43f79c8"
+}

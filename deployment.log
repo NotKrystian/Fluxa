@@ -1,0 +1,142 @@
+
+> deploy
+> node scripts/deployRealVaults.js
+
+[dotenv@17.2.3] injecting env (30) from .env -- tip: 🔐 prevent committing .env to code: https://dotenvx.com/precommit
+
+======================================================================
+FLUXA REAL MULTI-CHAIN DEPLOYMENT
+======================================================================
+
+📋 IMPORTANT: We use REAL USDC tokens only (Circle-supported)
+   - Sepolia: Using real USDC (0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238)
+   - Arc: Using real USDC proxy (0x3600000000000000000000000000000000000000)
+     Implementation: 0x3910B7cbb3341f1F4bF4cEB66e4A2C8f204FE2b8 (NativeFiatTokenV2_2)
+
+
+======================================================================
+DEPLOYING TO ETHEREUM SEPOLIA
+======================================================================
+
+Deployer: 0xe8f14cD50Cfa48e366142815D2b63263849400cE
+Balance: 0.049959222038554882 ETH
+
+✅ Using REAL USDC: 0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238
+   Symbol: USDC, Decimals: 6
+
+Deploying Project Token...
+✅ Project Token (FLX): 0x6Bcd80D445cE5b394Ee03De4961aA13e99dCeaD5
+
+Deploying VaultFactory...
+✅ VaultFactory: 0x2Fc5139fA55fae6a7255bC106d862d55cEb81049
+
+Creating FLX Liquidity Vault...
+✅ FLX Vault: 0x1ceD2e0a023c2DaB40D6bbC36c650C7B4BE42377
+
+Deploying ArcAMMFactory...
+✅ ArcAMMFactory: 0xf71B804bef804a809A9C9eB490Be220099e90A31
+
+Deploying ArcMetaRouter...
+✅ ArcMetaRouter: 0x7e2244e5b4826E6EC52c5A55dbB78B0F81e3F258
+
+Linking AMM Factory to Router...
+✅ Factory linked
+
+Creating FLX/USDC AMM Pool...
+✅ FLX/USDC Pool: 0x827337FcaC02ae434c53131197Fe110BfA3b6028
+
+======================================================================
+DEPLOYING TO ARC TESTNET
+======================================================================
+
+Deployer: 0xe8f14cD50Cfa48e366142815D2b63263849400cE
+Balance: 10.974325798133914752 USDC
+
+✅ Using REAL USDC: 0x3600000000000000000000000000000000000000
+   Symbol: USDC, Decimals: 6
+
+Deploying Project Token...
+✅ Project Token (FLX): 0xAd140f726772d2e26E9aB24864852e6b565C1d01
+
+Deploying VaultFactory...
+✅ VaultFactory: 0xeF7ff40bdE6f0ad3A824F844006a45C939AD04F8
+
+Creating FLX Liquidity Vault...
+✅ FLX Vault: 0x92f5bfDe4bFd18822731465825a64b754fA064B7
+
+Deploying ArcAMMFactory...
+✅ ArcAMMFactory: 0x901dF876CA796b54706835eFb15aD2E75D15a9a5
+
+Deploying ArcMetaRouter...
+✅ ArcMetaRouter: 0x94D770B3713E8769C9FB0DA4DA399f59d01C38fa
+
+Linking AMM Factory to Router...
+✅ Factory linked
+
+Creating FLX/USDC AMM Pool...
+✅ FLX/USDC Pool: 0x87413B89b99B39cDbf5359Ecb24b5F5701329163
+
+======================================================================
+DEPLOYING TOKEN REGISTRY (ARC)
+======================================================================
+
+Deploying TokenRegistry...
+✅ TokenRegistry: 0x4c398500bb16A26596A8Fc39Ccb09e59d0fD2e12
+
+Registering chains in registry...
+✅ Registered Ethereum Sepolia (11155111)
+✅ Registered Arc Testnet (5042002)
+
+Registering FLX token across chains...
+✅ Registered FLX on Ethereum Sepolia
+✅ Registered FLX on Arc Testnet
+
+Registering USDC token across chains...
+✅ Registered USDC on Ethereum Sepolia
+✅ Registered USDC on Arc Testnet
+
+======================================================================
+UPDATING .ENV FILES
+======================================================================
+
+✅ Updated .env
+✅ Created frontend/.env.local
+
+======================================================================
+DEPLOYMENT SUMMARY
+======================================================================
+
+✅ Ethereum Sepolia:
+   VaultFactory:    0x2Fc5139fA55fae6a7255bC106d862d55cEb81049
+   USDC:            0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238
+   FLX Token:       0x6Bcd80D445cE5b394Ee03De4961aA13e99dCeaD5
+   FLX Vault:       0x1ceD2e0a023c2DaB40D6bbC36c650C7B4BE42377
+   AMM Factory:     0xf71B804bef804a809A9C9eB490Be220099e90A31
+   Router:          0x7e2244e5b4826E6EC52c5A55dbB78B0F81e3F258
+   FLX/USDC Pool:   0x827337FcaC02ae434c53131197Fe110BfA3b6028
+
+✅ Arc Testnet:
+   VaultFactory:    0xeF7ff40bdE6f0ad3A824F844006a45C939AD04F8
+   USDC:            0x3600000000000000000000000000000000000000
+   FLX Token:       0xAd140f726772d2e26E9aB24864852e6b565C1d01
+   FLX Vault:       0x92f5bfDe4bFd18822731465825a64b754fA064B7
+   AMM Factory:     0x901dF876CA796b54706835eFb15aD2E75D15a9a5
+   Router:          0x94D770B3713E8769C9FB0DA4DA399f59d01C38fa
+   FLX/USDC Pool:   0x87413B89b99B39cDbf5359Ecb24b5F5701329163
+
+✅ Token Registry (Arc):
+   Address:         0x4c398500bb16A26596A8Fc39Ccb09e59d0fD2e12
+   FLX Token ID:    0xee927669481b6495946bf739db59cd52c9c70de4c060b721457fcbe64465eba3
+   USDC Token ID:   0xd6aca1be9729c13d677335161321649cccae6a591554772516700f986f942eaa
+
+✅ Deployment complete!
+
+📝 Next steps:
+   1. RESTART the frontend dev server to load new environment variables:
+      - Stop frontend (Ctrl+C if running)
+      - cd frontend && npm run dev
+   2. Start backend: cd backend && npm start
+   3. Visit http://localhost:3000/vaults to see deployed vaults
+   4. Visit http://localhost:3000/swap to swap tokens
+
+⚠️  IMPORTANT: Frontend must be restarted after deployment to load .env.local!
