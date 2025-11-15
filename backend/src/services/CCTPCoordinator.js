@@ -28,14 +28,17 @@ export class CCTPCoordinator {
     // Map our internal chain names to Bridge Kit's expected chain names
     // Bridge Kit uses underscore format like "Base_Sepolia" for testnets
     // Default mappings - will be updated when Bridge Kit initializes with actual supported chains
+    // Map our internal chain names to Bridge Kit's expected chain names
+    // IMPORTANT: Bridge Kit may only support testnets, not mainnets
+    // Use testnet names if mainnet is not available
     this.chainNameMap = {
       base: 'Base_Sepolia', // Use Base Sepolia as primary source chain
       basesepolia: 'Base_Sepolia',
       'base-sepolia': 'Base_Sepolia',
-      avalanche: 'Avalanche',
-      optimism: 'Optimism',
-      arbitrum: 'Arbitrum',
-      polygon: 'Polygon',
+      avalanche: 'Avalanche_Fuji', // Bridge Kit likely only supports Avalanche_Fuji (testnet), not mainnet
+      optimism: 'Optimism_Sepolia', // Use testnet if mainnet not available
+      arbitrum: 'Arbitrum_Sepolia', // Use testnet if mainnet not available
+      polygon: 'Polygon_Amoy', // Use testnet if mainnet not available
       arc: 'Arc_Testnet' // Bridge Kit uses "Arc_Testnet" for Arc testnet
     };
 
@@ -73,11 +76,15 @@ export class CCTPCoordinator {
       base: process.env.BASE_SEPOLIA_RPC_URL || process.env.BASE_RPC_URL || 'https://sepolia.base.org',
       basesepolia: process.env.BASE_SEPOLIA_RPC_URL || process.env.BASE_RPC_URL || 'https://sepolia.base.org',
       'base-sepolia': process.env.BASE_SEPOLIA_RPC_URL || process.env.BASE_RPC_URL || 'https://sepåolia.base.org',
-      polygon: process.env.POLYGON_RPC_URL,
-      avalanche: process.env.AVALANCHE_RPC_URL,
-      optimism: process.env.OPTIMISM_RPC_URL,
-      arbitrum: process.env.ARBITRUM_RPC_URL,
-      arc: 'https://hidden-cosmological-thunder.arc-testnet.quiknode.pro/e18d2b4649fda2fd51ef9f5a2c1d7d8fd132c886'
+      polygon: process.env.POLYGON_RPC_URL || process.env.POLYGON_AMOY_RPC_URL || 'https://rpc-amoy.polygon.technology',
+      'polygon-amoy': process.env.POLYGON_AMOY_RPC_URL || process.env.POLYGON_RPC_URL || 'https://rpc-amoy.polygon.technology',
+      avalanche: process.env.AVALANCHE_RPC_URL || process.env.AVALANCHE_FUJI_RPC_URL || 'https://api.avax-test.network/ext/bc/C/rpc',
+      'avalanche-fuji': process.env.AVALANCHE_FUJI_RPC_URL || process.env.AVALANCHE_RPC_URL || 'https://api.avax-test.network/ext/bc/C/rpc',
+      optimism: process.env.OPTIMISM_RPC_URL || process.env.OPTIMISM_SEPOLIA_RPC_URL || 'https://sepolia.optimism.io',
+      'optimism-sepolia': process.env.OPTIMISM_SEPOLIA_RPC_URL || process.env.OPTIMISM_RPC_URL || 'https://sepolia.optimism.io',
+      arbitrum: process.env.ARBITRUM_RPC_URL || process.env.ARBITRUM_SEPOLIA_RPC_URL || 'https://sepolia-rollup.arbitrum.io/rpc',
+      'arbitrum-sepolia': process.env.ARBITRUM_SEPOLIA_RPC_URL || process.env.ARBITRUM_RPC_URL || 'https://sepolia-rollup.arbitrum.io/rpc',
+      arc: process.env.ARC_RPC_URL || 'https://hidden-cosmological-thunder.arc-testnet.quiknode.pro/e18d2b4649fda2fd51ef9f5a2c1d7d8fd132c886'
     };
 
     // USDC addresses (testnet) - for balance checks and compatibility
@@ -136,34 +143,62 @@ export class CCTPCoordinator {
           const chainId = viemChain?.id;
           let chainRpcUrl = null;
           
-          // FIRST: Check by chain ID (most reliable)
+          // FIRST: Check by chain ID (most reliable) - ONLY for Arc
+          // IMPORTANT: Only apply Arc RPC if it's actually Arc, don't interfere with other chains
           if (chainId === 5042002) {
-            // Arc Testnet
+            // Arc Testnet - ONLY match by exact chain ID
             chainRpcUrl = this.rpcUrls.arc;
             console.log(`[CCTP Backend] ✅ Detected Arc by chain ID ${chainId}, using RPC: ${chainRpcUrl}`);
-          } else if (chainId === 84532 || chainName.includes('Base') && chainName.includes('Sepolia')) {
+          } else if (chainId === 84532) {
             // Base Sepolia
             chainRpcUrl = this.rpcUrls.base || this.rpcUrls.basesepolia;
-            console.log(`[CCTP Backend] ✅ Detected Base Sepolia, using RPC: ${chainRpcUrl}`);
+            console.log(`[CCTP Backend] ✅ Detected Base Sepolia by chain ID ${chainId}, using RPC: ${chainRpcUrl}`);
+          } else if (chainId === 80002) {
+            // Polygon Amoy Testnet
+            chainRpcUrl = this.rpcUrls.polygon || this.rpcUrls['polygon-amoy'];
+            console.log(`[CCTP Backend] ✅ Detected Polygon Amoy by chain ID ${chainId}, using RPC: ${chainRpcUrl}`);
+          } else if (chainId === 43113) {
+            // Avalanche Fuji Testnet
+            chainRpcUrl = this.rpcUrls.avalanche || this.rpcUrls['avalanche-fuji'];
+            console.log(`[CCTP Backend] ✅ Detected Avalanche Fuji by chain ID ${chainId}, using RPC: ${chainRpcUrl}`);
+          } else if (chainId === 11155420) {
+            // Optimism Sepolia
+            chainRpcUrl = this.rpcUrls.optimism || this.rpcUrls['optimism-sepolia'];
+            console.log(`[CCTP Backend] ✅ Detected Optimism Sepolia by chain ID ${chainId}, using RPC: ${chainRpcUrl}`);
+          } else if (chainId === 421614) {
+            // Arbitrum Sepolia
+            chainRpcUrl = this.rpcUrls.arbitrum || this.rpcUrls['arbitrum-sepolia'];
+            console.log(`[CCTP Backend] ✅ Detected Arbitrum Sepolia by chain ID ${chainId}, using RPC: ${chainRpcUrl}`);
           }
           
-          // SECOND: Check by chain name (fallback)
+          // SECOND: Check by chain name (fallback) - be specific, don't use Arc for everything
           if (!chainRpcUrl) {
-            if (chainName.includes('Base') && chainName.includes('Sepolia')) {
-              chainRpcUrl = this.rpcUrls.base || this.rpcUrls.basesepolia;
-            } else if (chainName.includes('Arc') || chainName === 'Arc_Testnet' || chainName.toLowerCase().includes('arc')) {
+            const chainNameLower = chainName.toLowerCase();
+            
+            // Check for Arc ONLY if name explicitly contains "arc" and "testnet"
+            if ((chainNameLower.includes('arc') && chainNameLower.includes('testnet')) || chainName === 'Arc_Testnet') {
               chainRpcUrl = this.rpcUrls.arc;
               console.log(`[CCTP Backend] ✅ Detected Arc by name "${chainName}", using RPC: ${chainRpcUrl}`);
+            } else if (chainName.includes('Base') && chainName.includes('Sepolia')) {
+              chainRpcUrl = this.rpcUrls.base || this.rpcUrls.basesepolia;
+            } else if (chainName.includes('Polygon') && (chainName.includes('Amoy') || chainName.includes('Testnet'))) {
+              chainRpcUrl = this.rpcUrls.polygon || this.rpcUrls['polygon-amoy'];
+            } else if (chainName.includes('Avalanche') && (chainName.includes('Fuji') || chainName.includes('Testnet'))) {
+              chainRpcUrl = this.rpcUrls.avalanche || this.rpcUrls['avalanche-fuji'];
+            } else if (chainName.includes('Optimism') && (chainName.includes('Sepolia') || chainName.includes('Testnet'))) {
+              chainRpcUrl = this.rpcUrls.optimism || this.rpcUrls['optimism-sepolia'];
+            } else if (chainName.includes('Arbitrum') && (chainName.includes('Sepolia') || chainName.includes('Testnet'))) {
+              chainRpcUrl = this.rpcUrls.arbitrum || this.rpcUrls['arbitrum-sepolia'];
             } else if (chainName.includes('Base')) {
               chainRpcUrl = this.rpcUrls.base;
             } else if (chainName.includes('Polygon')) {
-              chainRpcUrl = this.rpcUrls.polygon;
+              chainRpcUrl = this.rpcUrls.polygon || this.rpcUrls['polygon-amoy'];
             } else if (chainName.includes('Avalanche')) {
-              chainRpcUrl = this.rpcUrls.avalanche;
+              chainRpcUrl = this.rpcUrls.avalanche || this.rpcUrls['avalanche-fuji'];
             } else if (chainName.includes('Optimism')) {
-              chainRpcUrl = this.rpcUrls.optimism;
+              chainRpcUrl = this.rpcUrls.optimism || this.rpcUrls['optimism-sepolia'];
             } else if (chainName.includes('Arbitrum')) {
-              chainRpcUrl = this.rpcUrls.arbitrum;
+              chainRpcUrl = this.rpcUrls.arbitrum || this.rpcUrls['arbitrum-sepolia'];
             }
           }
           
@@ -172,13 +207,14 @@ export class CCTPCoordinator {
             chainRpcUrl = this.rpcUrls[chain];
           }
           
-          // FOURTH: Final fallback - check if it's Arc by ID or name
+          // FOURTH: Final fallback - ONLY use Arc RPC if it's explicitly Arc, otherwise use default
           if (!chainRpcUrl) {
-            if (chainId === 5042002 || chainName.toLowerCase().includes('arc')) {
+            // ONLY check for Arc here - don't apply Arc RPC to other chains
+            if (chainId === 5042002 || (chainName.toLowerCase().includes('arc') && chainName.toLowerCase().includes('testnet'))) {
               chainRpcUrl = this.rpcUrls.arc;
-              console.log(`[CCTP Backend] ✅ Final fallback: Using Arc RPC for chain ${chainName} (ID: ${chainId}): ${chainRpcUrl}`);
+              console.log(`[CCTP Backend] ✅ Final fallback: Using Arc RPC for Arc chain ${chainName} (ID: ${chainId}): ${chainRpcUrl}`);
             } else {
-              console.warn(`[CCTP Backend] ⚠️  No RPC URL found for chain ${chainName} (ID: ${chainId}), using default`);
+              console.warn(`[CCTP Backend] ⚠️  No RPC URL found for chain ${chainName} (ID: ${chainId}), using Bridge Kit default`);
               // Return default client (Bridge Kit will use its default RPC)
               return createPublicClient({
                 chain: viemChain,
@@ -251,18 +287,42 @@ export class CCTPCoordinator {
       }
       
       // Try to find by name or partial match (case-insensitive)
+      // IMPORTANT: Prioritize exact matches, then exact chain matches, then partial matches
       const chainNameLower = chainName.toLowerCase();
-      const nameMatch = this.supportedChainDefinitions.find(c => {
+      
+      // First, try exact match on chain property
+      const exactChainMatch = this.supportedChainDefinitions.find(c => 
+        c.chain?.toLowerCase() === chainNameLower
+      );
+      if (exactChainMatch) {
+        console.log(`[CCTP Backend] Found exact chain property match: ${chainName} → ${exactChainMatch.chain}`);
+        return exactChainMatch.chain;
+      }
+      
+      // Second, try exact match on name property
+      const exactNameMatch = this.supportedChainDefinitions.find(c => 
+        c.name?.toLowerCase() === chainNameLower
+      );
+      if (exactNameMatch) {
+        console.log(`[CCTP Backend] Found exact name property match: ${chainName} → ${exactNameMatch.chain}`);
+        return exactNameMatch.chain;
+      }
+      
+      // Third, try partial match but be more strict - only match if chain name starts with or equals the search term
+      // This prevents "Avalanche" from matching "Polygon" or other unrelated chains
+      const partialMatch = this.supportedChainDefinitions.find(c => {
         const cName = c.name?.toLowerCase() || '';
         const cChain = c.chain?.toLowerCase() || '';
-        return cName === chainNameLower || 
-               cChain === chainNameLower ||
-               cName.includes(chainNameLower) ||
-               cChain.includes(chainNameLower);
+        // Only match if the chain/name starts with our search term, or our search term starts with the chain/name
+        // This prevents substring matches in the middle (e.g., "avalanche" won't match "polygon")
+        return cChain.startsWith(chainNameLower) || 
+               chainNameLower.startsWith(cChain) ||
+               cName.startsWith(chainNameLower) ||
+               chainNameLower.startsWith(cName);
       });
-      if (nameMatch) {
-        console.log(`[CCTP Backend] Found chain by name match: ${chainName} → ${nameMatch.chain}`);
-        return nameMatch.chain;
+      if (partialMatch) {
+        console.log(`[CCTP Backend] Found chain by partial match: ${chainName} → ${partialMatch.chain}`);
+        return partialMatch.chain;
       }
       
       // Log available chains for debugging
@@ -1293,10 +1353,21 @@ export class CCTPCoordinator {
         throw new Error(`Invalid chain identifiers: source=${finalSourceChain}, dest=${finalDestChain}`);
       }
       
-      // Log available supported chains for debugging
+      // Log available supported chains for debugging (only if we had issues)
       if (this.supportedChainDefinitions && this.supportedChainDefinitions.length > 0) {
-        console.log(`[CCTP Backend] Available Bridge Kit chains:`, 
-          this.supportedChainDefinitions.map(c => `${c.chain} (${c.name})`).join(', '));
+        const allChains = this.supportedChainDefinitions.map(c => `${c.chain} (${c.name})`).join(', ');
+        console.log(`[CCTP Backend] Available Bridge Kit chains (${this.supportedChainDefinitions.length} total):`, allChains);
+        
+        // Specifically check if our destination chain is in the list
+        const destChainDef = this.supportedChainDefinitions.find(c => 
+          c.chain === finalDestChain || c.name?.toLowerCase() === finalDestChain.toLowerCase()
+        );
+        if (!destChainDef) {
+          console.error(`[CCTP Backend] ⚠️  WARNING: Destination chain "${finalDestChain}" not found in Bridge Kit supported chains!`);
+          console.error(`[CCTP Backend] This will likely cause "Invalid destination domain" error.`);
+        } else {
+          console.log(`[CCTP Backend] ✓ Destination chain "${finalDestChain}" confirmed in Bridge Kit supported chains`);
+        }
       }
 
       // Pre-approve USDC like test file does (to avoid timing issues)
