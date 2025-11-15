@@ -120,6 +120,126 @@ export const apiClient = {
     const response = await api.get(`/api/gateway/balance/${address}/${token}`);
     return response.data.data.balance;
   },
+
+  // CCTP methods
+  async initiateCCTP(request: {
+    sourceChain: string;
+    destinationChain: string;
+    amount: string;
+    recipient?: string;
+    useFastAttestation?: boolean;
+  }): Promise<any> {
+    const response = await api.post('/api/cctp/initiate', request);
+    return response.data.data;
+  },
+
+  async waitCCTPAttestation(txHash: string, useFastAttestation?: boolean): Promise<any> {
+    const response = await api.post('/api/cctp/wait-attestation', { txHash, useFastAttestation });
+    return response.data.data;
+  },
+
+  async completeCCTP(request: {
+    attestation: string;
+    message: string;
+    destinationChain: string;
+  }): Promise<any> {
+    const response = await api.post('/api/cctp/complete', request);
+    return response.data.data;
+  },
+
+  async executeFullCCTP(request: {
+    sourceChain: string;
+    destinationChain: string;
+    amount: string;
+    recipient?: string;
+    useFastAttestation?: boolean;
+  }): Promise<any> {
+    const response = await api.post('/api/cctp/full-transfer', request);
+    return response.data.data;
+  },
+
+  async getCCTPSupportedChains(): Promise<string[]> {
+    const response = await api.get('/api/cctp/supported-chains');
+    return response.data.data;
+  },
+
+  // New CCTP flow: create transfer, check deposit, execute
+  async createCCTPTransfer(request: {
+    sourceChain: string;
+    destinationChain: string;
+    amount: string;
+    recipient?: string;
+    useFastAttestation?: boolean;
+  }): Promise<any> {
+    const response = await api.post('/api/cctp/create-transfer', request);
+    return response.data.data;
+  },
+
+  async checkCCTPDeposit(transferId: string, sourceChain?: string): Promise<any> {
+    const params = sourceChain ? { sourceChain } : {};
+    const response = await api.get(`/api/cctp/check-deposit/${transferId}`, { params });
+    return response.data.data;
+  },
+
+  async executeCCTPTransfer(transferId: string, options?: {
+    sourceChain?: string;
+    destinationChain?: string;
+    amount?: string;
+    recipient?: string;
+    useFastAttestation?: boolean;
+  }): Promise<any> {
+    const response = await api.post(`/api/cctp/execute/${transferId}`, options || {});
+    return response.data.data;
+  },
+
+  async getCCTPTransferStatus(transferId: string): Promise<any> {
+    const response = await api.get(`/api/cctp/status/${transferId}`);
+    return response.data.data;
+  },
+
+  async getCCTPWalletAddress(chain: string): Promise<string> {
+    const response = await api.get(`/api/cctp/wallet-address/${chain}`);
+    return response.data.data.address;
+  },
+
+  async getCCTPWalletBalance(chain: string, sourceChain?: string, destinationChain?: string, amount?: string): Promise<any> {
+    const params = new URLSearchParams();
+    if (sourceChain) params.append('sourceChain', sourceChain);
+    if (destinationChain) params.append('destinationChain', destinationChain);
+    if (amount) params.append('amount', amount);
+    const queryString = params.toString();
+    const url = `/api/cctp/wallet-balance/${chain}${queryString ? `?${queryString}` : ''}`;
+    const response = await api.get(url);
+    return response.data.data;
+  },
+
+  // Gateway methods
+  async depositToGateway(request: {
+    chain: string;
+    token: string;
+    amount: string;
+    depositor?: string;
+    useOnChain?: boolean;
+  }): Promise<any> {
+    const response = await api.post('/api/gateway/deposit', request);
+    return response.data.data;
+  },
+
+  async withdrawFromGateway(request: {
+    token: string;
+    amount: string;
+    targetChain: string;
+    recipient: string;
+    depositor?: string;
+  }): Promise<any> {
+    const response = await api.post('/api/gateway/withdraw', request);
+    return response.data.data;
+  },
+
+  async getGatewayWithdrawalStatus(withdrawalId: string): Promise<any> {
+    const response = await api.get(`/api/gateway/withdrawal-status/${withdrawalId}`);
+    return response.data.data;
+  },
 };
 
 export default apiClient;

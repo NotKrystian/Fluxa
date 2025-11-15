@@ -1,0 +1,21 @@
+{
+  "watch": ["src"],
+  "ext": "js",
+  "ignore": [
+    "node_modules/**",
+    "*.log",
+    "*.json",
+    ".env",
+    ".env.*",
+    "cache/**",
+    "artifacts/**",
+    ".git/**",
+    "*.md",
+    "*.txt",
+    "**/*.test.js",
+    "**/node_modules/**"
+  ],
+  "exec": "node src/index.js",
+  "verbose": false
+}
+

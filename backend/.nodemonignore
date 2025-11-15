@@ -1,0 +1,12 @@
+# Ignore these files/directories from triggering restarts
+node_modules/
+*.log
+*.json
+.env
+.env.*
+cache/
+artifacts/
+.git/
+*.md
+*.txt
+

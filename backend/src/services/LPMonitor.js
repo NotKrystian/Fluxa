@@ -33,7 +33,7 @@ export class LPMonitor {
       {
         name: 'arc',
         chainId: 5042002,
-        rpcUrl: process.env.ARC_RPC_URL || 'https://rpc.testnet.arc.network',
+        rpcUrl: process.env.ARC_RPC_URL || 'https://hidden-cosmological-thunder.arc-testnet.quiknode.pro/e18d2b4649fda2fd51ef9f5a2c1d7d8fd132c886',
         factoryAddress: process.env.ARC_AMM_FACTORY,
         vaultAddress: process.env.ARC_FLX_VAULT,
         enabled: true

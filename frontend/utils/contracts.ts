@@ -306,6 +306,8 @@ export async function executeSwap(
 
 /**
  * Get token balance
+ * For Arc: USDC is native token, use provider.getBalance()
+ * For other chains: USDC is ERC-20 token, use contract.balanceOf()
  */
 export async function getTokenBalance(
   tokenAddress: string,
@@ -313,6 +315,14 @@ export async function getTokenBalance(
   provider: ethers.Provider
 ): Promise<bigint> {
   try {
+    // Check if we're on Arc (USDC is native token)
+    // If tokenAddress is empty or null, assume it's Arc native USDC
+    if (!tokenAddress || tokenAddress === '' || tokenAddress === '0x0000000000000000000000000000000000000000') {
+      // Arc: USDC is native token - use getBalance()
+      return await provider.getBalance(userAddress);
+    }
+    
+    // Other chains: USDC is ERC-20 token - use contract
     const token = getERC20Contract(tokenAddress, provider);
     return await token.balanceOf(userAddress);
   } catch (error) {

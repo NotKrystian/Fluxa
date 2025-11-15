@@ -20,6 +20,20 @@ PRIVATE_KEY=your_private_key_here
 SEPOLIA_RPC_URL=https://ethereum-sepolia-rpc.publicnode.com
 ARC_RPC_URL=https://rpc.testnet.arc.network
 
+# Gateway Wallet Addresses (Circle deployments)
+ARC_GATEWAY_WALLET=0x0077777d7EBA4688BDeF3E311b846F25870A19B9
+ETHEREUM_GATEWAY_WALLET=0x0077777d7EBA4688BDeF3E311b846F25870A19B9  # Sepolia
+SEPOLIA_GATEWAY_WALLET=0x0077777d7EBA4688BDeF3E311b846F25870A19B9
+
+# CCTP Configuration (optional - for cross-chain USDC)
+CCTP_PRIVATE_KEY=your_private_key_here
+ARC_TOKEN_MESSENGER=0x...  # TokenMessenger on Arc
+ARC_MESSAGE_TRANSMITTER=0x...  # MessageTransmitter on Arc
+ARC_USDC_ADDRESS=0x...  # USDC on Arc
+
+# Gateway API (optional - for Circle Gateway API)
+CIRCLE_GATEWAY_API_KEY=your_api_key_here
+
 # Backend
 BACKEND_PORT=3001
 ```

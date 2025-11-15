@@ -29,6 +29,7 @@ export default function RootLayout({
                 <a href="/deploy" className="hover:text-arc-green transition-colors">Deploy</a>
                 <a href="/swap" className="hover:text-arc-blue transition-colors">Swap</a>
                 <a href="/highvalue" className="hover:text-arc-purple transition-colors font-semibold">Showcase</a>
+                <a href="/test" className="hover:text-orange-600 transition-colors">Test</a>
               </div>
             </div>
           </div>

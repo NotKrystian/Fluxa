@@ -12,6 +12,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import { ethers } from 'ethers';
 import { LPMonitor } from './services/LPMonitor.js';
 import { RouteOptimizer } from './services/RouteOptimizer.js';
 import { CCTPCoordinator } from './services/CCTPCoordinator.js';
@@ -201,6 +202,7 @@ async function executeMultiChainSwap({ route, recipient, minAmountOut }) {
         route.cctpTransfers.map(transfer =>
           cctpCoordinator.initiateTransfer({
             ...transfer,
+            recipient: recipient, // Mint USDC to user's recipient address on Arc
             useFastAttestation: true // Use fast attestation for speed
           })
         )
@@ -320,6 +322,398 @@ app.post('/api/rebalance/analyze', async (req, res) => {
 });
 
 // ============================================================================
+// CCTP Endpoints
+// ============================================================================
+
+/**
+ * POST /api/cctp/estimate-fee
+ * Estimate transfer fee using Bridge Kit
+ */
+app.post('/api/cctp/estimate-fee', async (req, res) => {
+  try {
+    const { sourceChain, destinationChain, amount, useFastAttestation } = req.body;
+    
+    if (!sourceChain || !destinationChain || !amount) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Missing required fields: sourceChain, destinationChain, amount' 
+      });
+    }
+
+    const result = await cctpCoordinator.estimateTransferFee({
+      sourceChain,
+      destinationChain,
+      amount,
+      useFastAttestation: useFastAttestation !== false
+    });
+
+    res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Error estimating transfer fee:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /api/cctp/initiate
+ * Initiate CCTP transfer (burn on source chain)
+ */
+app.post('/api/cctp/initiate', async (req, res) => {
+  try {
+    const { sourceChain, destinationChain, amount, recipient, useFastAttestation } = req.body;
+    
+    if (!sourceChain || !destinationChain || !amount) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Missing required fields: sourceChain, destinationChain, amount' 
+      });
+    }
+
+    const result = await cctpCoordinator.initiateTransfer({
+      sourceChain,
+      destinationChain,
+      amount,
+      recipient,
+      useFastAttestation: useFastAttestation !== false
+    });
+
+    res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Error initiating CCTP transfer:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /api/cctp/wait-attestation
+ * Wait for CCTP attestation
+ */
+app.post('/api/cctp/wait-attestation', async (req, res) => {
+  try {
+    const { txHash, useFastAttestation } = req.body;
+    
+    if (!txHash) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Missing required field: txHash' 
+      });
+    }
+
+    const result = await cctpCoordinator.waitForAttestation(
+      txHash,
+      useFastAttestation !== false
+    );
+
+    res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Error waiting for attestation:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /api/cctp/complete
+ * Complete CCTP transfer (mint on destination chain)
+ */
+app.post('/api/cctp/complete', async (req, res) => {
+  try {
+    const { attestation, message, destinationChain } = req.body;
+    
+    if (!attestation || !message || !destinationChain) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Missing required fields: attestation, message, destinationChain' 
+      });
+    }
+
+    const result = await cctpCoordinator.completeTransfer({
+      attestation,
+      message,
+      destinationChain
+    });
+
+    res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Error completing CCTP transfer:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /api/cctp/full-transfer
+ * Execute full CCTP flow (initiate, wait, complete)
+ * DEPRECATED: Use /api/cctp/create-transfer instead
+ */
+app.post('/api/cctp/full-transfer', async (req, res) => {
+  try {
+    const { sourceChain, destinationChain, amount, recipient, useFastAttestation } = req.body;
+    
+    if (!sourceChain || !destinationChain || !amount) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Missing required fields: sourceChain, destinationChain, amount' 
+      });
+    }
+
+    const result = await cctpCoordinator.executeFullTransfer({
+      sourceChain,
+      destinationChain,
+      amount,
+      recipient,
+      useFastAttestation: useFastAttestation !== false
+    });
+
+    res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Error executing full CCTP transfer:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /api/cctp/create-transfer
+ * Create a pending CCTP transfer request
+ * Returns wallet address for user to send USDC
+ */
+app.post('/api/cctp/create-transfer', async (req, res) => {
+  try {
+    const { sourceChain, destinationChain, amount, recipient, useFastAttestation } = req.body;
+    
+    if (!sourceChain || !destinationChain || !amount) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Missing required fields: sourceChain, destinationChain, amount' 
+      });
+    }
+
+    const result = await cctpCoordinator.createPendingTransfer({
+      sourceChain,
+      destinationChain,
+      amount,
+      recipient,
+      useFastAttestation: useFastAttestation !== false
+    });
+
+    res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Error creating CCTP transfer:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/cctp/check-deposit/:transferId
+ * Check if USDC has been received for a pending transfer
+ */
+app.get('/api/cctp/check-deposit/:transferId', async (req, res) => {
+  try {
+    const { transferId } = req.params;
+    const { sourceChain } = req.query; // Optional: allow sourceChain to be passed as query param
+    
+    const result = await cctpCoordinator.checkDepositReceived(transferId, sourceChain);
+
+    res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Error checking deposit:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /api/cctp/execute/:transferId
+ * Execute CCTP transfer after USDC deposit is confirmed
+ */
+app.post('/api/cctp/execute/:transferId', async (req, res) => {
+  try {
+    const { transferId } = req.params;
+    // Allow optional parameters in body to reconstruct transfer after server restart
+    const { sourceChain, destinationChain, amount, recipient, useFastAttestation } = req.body;
+    
+    const result = await cctpCoordinator.executePendingTransfer(transferId, {
+      sourceChain,
+      destinationChain,
+      amount,
+      recipient,
+      useFastAttestation
+    });
+
+    res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Error executing pending transfer:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/cctp/status/:transferId
+ * Get status of a pending transfer
+ */
+app.get('/api/cctp/status/:transferId', async (req, res) => {
+  try {
+    const { transferId } = req.params;
+    
+    const transfer = cctpCoordinator.getPendingTransfer(transferId);
+    
+    if (!transfer) {
+      return res.status(404).json({ 
+        success: false, 
+        error: 'Transfer not found' 
+      });
+    }
+
+    res.json({ success: true, data: transfer });
+  } catch (error) {
+    console.error('Error getting transfer status:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/cctp/wallet-address
+ * Get CCTP wallet address for a specific chain
+ */
+app.get('/api/cctp/wallet-address/:chain', async (req, res) => {
+  try {
+    const { chain } = req.params;
+    
+    const address = cctpCoordinator.getCCTPWalletAddress(chain);
+
+    res.json({ success: true, data: { address, chain } });
+  } catch (error) {
+    console.error('Error getting wallet address:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/cctp/wallet-balance/:chain
+ * Get CCTP wallet ETH and USDC balance for a specific chain
+ * Optionally accepts sourceChain and destinationChain query params for gas estimation
+ */
+app.get('/api/cctp/wallet-balance/:chain', async (req, res) => {
+  try {
+    const { chain } = req.params;
+    const { sourceChain, destinationChain, amount } = req.query;
+    
+    const address = cctpCoordinator.getCCTPWalletAddress(chain);
+    const provider = cctpCoordinator.getProvider(chain);
+    
+    if (!provider) {
+      return res.status(400).json({ 
+        success: false, 
+        error: `No RPC configured for ${chain}` 
+      });
+    }
+
+    // Get gas balance - Arc uses USDC as native gas token, other chains use ETH
+    const isArc = chain.toLowerCase() === 'arc';
+    let gasBalance = null;
+    let gasTokenName = 'ETH';
+    
+    if (isArc) {
+      // Arc uses USDC as native gas token - check native balance (no contract needed)
+      gasTokenName = 'USDC';
+      try {
+        gasBalance = await provider.getBalance(address);
+      } catch (err) {
+        console.warn('Could not fetch native USDC balance for Arc:', err.message);
+        gasBalance = 0n;
+      }
+    } else {
+      // Other chains use ETH
+      gasBalance = await provider.getBalance(address);
+    }
+    
+    // Get USDC balance (for transfers, not gas)
+    // For Arc: USDC is native token, so gasBalance IS the USDC balance
+    // For other chains: USDC is ERC-20 token, check contract balance
+    let usdcBalance = '0';
+    if (isArc) {
+      // Arc: Native USDC balance is the same as gas balance
+      usdcBalance = gasBalance.toString();
+    } else {
+      // Other chains: Check ERC-20 USDC contract balance
+      const usdcAddress = cctpCoordinator.getUSDCAddress(chain);
+      if (usdcAddress) {
+        try {
+          const usdcContract = new ethers.Contract(
+            usdcAddress,
+            ['function balanceOf(address) view returns (uint256)'],
+            provider
+          );
+          usdcBalance = (await usdcContract.balanceOf(address)).toString();
+        } catch (err) {
+          console.warn('Could not fetch USDC balance:', err.message);
+        }
+      }
+    }
+
+    // Estimate gas costs if sourceChain and destinationChain are provided
+    let gasEstimate = null;
+    if (sourceChain && destinationChain) {
+      try {
+        const estimateAmount = amount || '1.0'; // Default to 1 USDC for estimation
+        gasEstimate = await cctpCoordinator.estimateGasCosts(sourceChain, destinationChain, estimateAmount);
+      } catch (err) {
+        console.warn('Could not estimate gas costs:', err.message);
+      }
+    }
+
+    const response = { 
+      address,
+      chain,
+      gasBalance: gasBalance.toString(),
+      gasToken: gasTokenName,
+      usdcBalance,
+      gasBalanceFormatted: isArc 
+        ? ethers.formatEther(gasBalance) // Arc native USDC uses 18 decimals (like ETH)
+        : ethers.formatEther(gasBalance),
+      usdcBalanceFormatted: isArc 
+        ? ethers.formatEther(usdcBalance) // Arc native USDC uses 18 decimals
+        : ethers.formatUnits(usdcBalance, 6), // Other chains: ERC-20 USDC uses 6 decimals
+      // Keep ethBalance for backward compatibility (will be same as gasBalance for non-Arc chains)
+      ethBalance: isArc ? '0' : gasBalance.toString(),
+      ethBalanceFormatted: isArc ? '0' : ethers.formatEther(gasBalance)
+    };
+
+    // Add gas estimate if available
+    if (gasEstimate) {
+      response.gasEstimate = {
+        sourceGasCost: gasEstimate.sourceGasCost.toString(),
+        sourceGasCostFormatted: gasEstimate.sourceGasCostFormatted,
+        sourceGasToken: gasEstimate.sourceGasToken,
+        destGasCost: gasEstimate.destGasCost.toString(),
+        destGasCostFormatted: gasEstimate.destGasCostFormatted,
+        destGasToken: gasEstimate.destGasToken,
+        estimated: gasEstimate.estimated || false
+      };
+    }
+
+    res.json({ 
+      success: true,
+      data: response
+    });
+  } catch (error) {
+    console.error('Error getting wallet balance:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/cctp/supported-chains
+ * Get list of supported chains for CCTP
+ */
+app.get('/api/cctp/supported-chains', async (req, res) => {
+  try {
+    const chains = cctpCoordinator.getSupportedChains();
+    res.json({ success: true, data: chains });
+  } catch (error) {
+    console.error('Error fetching supported chains:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ============================================================================
 // Gateway Endpoints (for Circle Wallet integration)
 // ============================================================================
 
@@ -334,6 +728,81 @@ app.get('/api/gateway/balance/:address/:token', async (req, res) => {
     res.json({ success: true, data: { balance } });
   } catch (error) {
     console.error('Error fetching Gateway balance:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /api/gateway/deposit
+ * Deposit tokens to Gateway
+ */
+app.post('/api/gateway/deposit', async (req, res) => {
+  try {
+    const { chain, token, amount, depositor, useOnChain } = req.body;
+    
+    if (!chain || !token || !amount) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Missing required fields: chain, token, amount' 
+      });
+    }
+
+    const result = await gatewayCoordinator.deposit({
+      chain,
+      token,
+      amount,
+      depositor,
+      useOnChain: useOnChain === true
+    });
+
+    res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Error depositing to Gateway:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /api/gateway/withdraw
+ * Withdraw tokens from Gateway
+ */
+app.post('/api/gateway/withdraw', async (req, res) => {
+  try {
+    const { token, amount, targetChain, recipient, depositor } = req.body;
+    
+    if (!token || !amount || !targetChain || !recipient) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Missing required fields: token, amount, targetChain, recipient' 
+      });
+    }
+
+    const result = await gatewayCoordinator.withdraw({
+      token,
+      amount,
+      targetChain,
+      recipient,
+      depositor
+    });
+
+    res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Error withdrawing from Gateway:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/gateway/withdrawal-status/:withdrawalId
+ * Get withdrawal status
+ */
+app.get('/api/gateway/withdrawal-status/:withdrawalId', async (req, res) => {
+  try {
+    const { withdrawalId } = req.params;
+    const status = await gatewayCoordinator.getWithdrawalStatus(withdrawalId);
+    res.json({ success: true, data: status });
+  } catch (error) {
+    console.error('Error fetching withdrawal status:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -405,6 +874,20 @@ app.get('/api/registry/token/:symbol/chains', async (req, res) => {
 // ============================================================================
 // Start Server
 // ============================================================================
+
+// Handle unhandled promise rejections to prevent crashes
+process.on('unhandledRejection', (error, promise) => {
+  console.error('Unhandled Promise Rejection:', error);
+  console.error('Stack:', error.stack);
+  // Don't exit - just log the error
+});
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error);
+  console.error('Stack:', error.stack);
+  // Don't exit - just log the error
+});
 
 // Start LP monitoring
 await lpMonitor.start();

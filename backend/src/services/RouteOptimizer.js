@@ -30,10 +30,16 @@ export class RouteOptimizer {
     };
     
     console.log('[ROUTE_OPTIMIZER] Token address mappings:');
-    console.log('  Arc - FLX:', this.tokenAddresses.arc.flx);
-    console.log('  Arc - USDC:', this.tokenAddresses.arc.usdc);
-    console.log('  Sepolia - FLX:', this.tokenAddresses.sepolia.flx);
-    console.log('  Sepolia - USDC:', this.tokenAddresses.sepolia.usdc);
+    console.log('  Arc - FLX:', this.tokenAddresses.arc.flx || 'NOT CONFIGURED');
+    console.log('  Arc - USDC:', this.tokenAddresses.arc.usdc || 'NOT CONFIGURED');
+    console.log('  Sepolia - FLX:', this.tokenAddresses.sepolia.flx || 'NOT CONFIGURED');
+    console.log('  Sepolia - USDC:', this.tokenAddresses.sepolia.usdc || 'NOT CONFIGURED');
+    
+    // Warn if Sepolia addresses are missing
+    if (!this.tokenAddresses.sepolia.flx || !this.tokenAddresses.sepolia.usdc) {
+      console.warn('⚠️  WARNING: Sepolia token addresses not fully configured!');
+      console.warn('   Set SEPOLIA_FLX_TOKEN and SEPOLIA_USDC_ADDRESS in .env');
+    }
   }
   
   /**
@@ -486,12 +492,19 @@ export class RouteOptimizer {
     const logicalTokenIn = this.getLogicalToken(tokenIn, sourceChain);
     const logicalTokenOut = this.getLogicalToken(tokenOut, sourceChain);
     
-    console.log(`   Logical Token In: ${logicalTokenIn}`);
-    console.log(`   Logical Token Out: ${logicalTokenOut}`);
+    console.log(`   Logical Token In: ${logicalTokenIn || 'UNKNOWN'}`);
+    console.log(`   Logical Token Out: ${logicalTokenOut || 'UNKNOWN'}`);
+    console.log(`   Source chain token addresses:`);
+    console.log(`     FLX: ${this.tokenAddresses[sourceChain]?.flx || 'NOT CONFIGURED'}`);
+    console.log(`     USDC: ${this.tokenAddresses[sourceChain]?.usdc || 'NOT CONFIGURED'}`);
     
     if (!logicalTokenIn || !logicalTokenOut) {
       console.warn(`   ⚠️  Could not determine logical tokens from source chain addresses`);
+      console.warn(`   Token In: ${tokenIn}`);
+      console.warn(`   Token Out: ${tokenOut}`);
+      console.warn(`   Source Chain: ${sourceChain}`);
       console.warn(`   Falling back to exact address matching for source chain only`);
+      console.warn(`   This will prevent cross-chain routing!`);
     }
 
     for (const [chain, depths] of Object.entries(allDepths)) {
@@ -502,8 +515,13 @@ export class RouteOptimizer {
       const chainTokenOut = logicalTokenOut ? this.getTokenAddressOnChain(logicalTokenOut, chain) : null;
       
       console.log(`     Chain ${chain} token addresses:`);
-      console.log(`       ${logicalTokenIn || 'tokenIn'}: ${chainTokenIn || 'N/A'}`);
-      console.log(`       ${logicalTokenOut || 'tokenOut'}: ${chainTokenOut || 'N/A'}`);
+      console.log(`       ${logicalTokenIn || 'tokenIn'}: ${chainTokenIn || 'N/A (NOT CONFIGURED)'}`);
+      console.log(`       ${logicalTokenOut || 'tokenOut'}: ${chainTokenOut || 'N/A (NOT CONFIGURED)'}`);
+      
+      if (!chainTokenIn || !chainTokenOut) {
+        console.warn(`       ⚠️  Chain ${chain} token addresses not configured - pools on this chain will be skipped!`);
+        console.warn(`       Configure ${chain.toUpperCase()}_FLX_TOKEN and ${chain.toUpperCase()}_USDC_ADDRESS in .env`);
+      }
       
       for (const depth of depths) {
         console.log(`     Pool: ${depth.poolAddress}`);
@@ -530,6 +548,24 @@ export class RouteOptimizer {
           isToken1In = depth.token1 && depth.token1.toLowerCase() === tokenIn.toLowerCase();
           isToken0Out = depth.token0 && depth.token0.toLowerCase() === tokenOut.toLowerCase();
           isToken1Out = depth.token1 && depth.token1.toLowerCase() === tokenOut.toLowerCase();
+        } else {
+          // For remote chains, try to infer logical tokens from vault structure
+          // Vaults have projectToken (FLX) and usdc (USDC)
+          // If this is a vault, we can infer which token is which
+          if (depth.isVault) {
+            // For vaults: token0 = projectToken (FLX), token1 = usdc (USDC)
+            // Try to match based on this assumption
+            if (logicalTokenIn === 'FLX' && logicalTokenOut === 'USDC') {
+              // FLX -> USDC swap
+              isToken0In = true; // token0 is FLX
+              isToken1Out = true; // token1 is USDC
+            } else if (logicalTokenIn === 'USDC' && logicalTokenOut === 'FLX') {
+              // USDC -> FLX swap
+              isToken1In = true; // token1 is USDC
+              isToken0Out = true; // token0 is FLX
+            }
+            console.log(`       Using vault structure inference (token0=FLX, token1=USDC)`);
+          }
         }
 
         console.log(`       isToken0In: ${isToken0In}, isToken1In: ${isToken1In}`);

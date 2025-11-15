@@ -461,6 +461,8 @@ contract ArcMetaRouter is Ownable {
      *
      * This establishes / tops up the user's unified balance in Gateway.
      * Your backend then uses the Gateway API to mint on destination chains.
+     * 
+     * NOTE: Gateway operations must involve Arc (deposit from Arc or withdraw to Arc).
      */
     function routeGatewayDeposit(
         address token,
@@ -492,6 +494,32 @@ contract ArcMetaRouter is Ownable {
         }
 
         emit GatewayDeposit(msg.sender, depositor, token, netAmount);
+    }
+
+    /**
+     * Receive CCTP message callback (can be used in hooks)
+     * This function can be called by MessageTransmitter after receiving a CCTP message
+     * to route the minted USDC to a specific recipient or execute additional logic.
+     * 
+     * NOTE: This is optional - CCTP messages can mint directly to recipients.
+     * This function is useful if you want the router to handle the minted tokens.
+     * 
+     * @param recipient Address to receive the minted USDC
+     * @param amount Amount of USDC that was minted
+     */
+    function onCCTPReceived(
+        address recipient,
+        uint256 amount
+    ) external {
+        // This function can be called by MessageTransmitter via hook
+        // or can be used to route minted USDC from this contract to recipients
+        // For now, it's a placeholder - actual implementation depends on hook setup
+        
+        // If USDC was minted to this contract, we can route it
+        uint256 balance = USDC.balanceOf(address(this));
+        if (balance >= amount && recipient != address(0)) {
+            USDC.safeTransfer(recipient, amount);
+        }
     }
 
     // ========= Views / helpers =========
