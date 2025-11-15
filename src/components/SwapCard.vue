@@ -8,7 +8,65 @@
     >
       <div class="flex items-center justify-between mb-4">
         <h2 class="text-lg font-semibold">Swap</h2>
-        <div class="text-sm opacity-80">Cross-chain</div>
+        <div class="flex items-center gap-2">
+          <!-- Chain indicator -->
+          <div v-if="isConnected" class="text-xs opacity-70">
+            Chain: {{ chainId || 'Unknown' }}
+          </div>
+          <div class="text-sm opacity-80">Cross-chain</div>
+        </div>
+      </div>
+
+      <!-- Chain Selector (only show when connected) -->
+      <div v-if="isConnected" class="mb-4">
+        <label class="text-sm opacity-80 mb-2 block">Select Network</label>
+        <div class="flex gap-2">
+          <button
+            @click="handleChainSwitch(1)"
+            :class="[
+              'flex-1 rounded-xl py-2 px-3 text-sm border transition-colors',
+              chainId === 1
+                ? isNight 
+                  ? 'bg-[#0b401e] border-[#0b401e]' 
+                  : 'bg-[#0b401e] text-white border-[#0b401e]'
+                : isNight
+                  ? 'border-[#0b401e]'
+                  : 'border-[#0b401e]'
+            ]"
+          >
+            Ethereum
+          </button>
+          <button
+            @click="handleChainSwitch(8453)"
+            :class="[
+              'flex-1 rounded-xl py-2 px-3 text-sm border transition-colors',
+              chainId === 8453
+                ? isNight 
+                  ? 'bg-[#0b401e] border-[#0b401e]' 
+                  : 'bg-[#0b401e] text-white border-[#0b401e]'
+                : isNight
+                  ? 'border-[#0b401e]'
+                  : 'border-[#0b401e]'
+            ]"
+          >
+            Base
+          </button>
+          <button
+            @click="handleChainSwitch(42161)"
+            :class="[
+              'flex-1 rounded-xl py-2 px-3 text-sm border transition-colors',
+              chainId === 42161
+                ? isNight 
+                  ? 'bg-[#0b401e] border-[#0b401e]' 
+                  : 'bg-[#0b401e] text-white border-[#0b401e]'
+                : isNight
+                  ? 'border-[#0b401e]'
+                  : 'border-[#0b401e]'
+            ]"
+          >
+            Arbitrum
+          </button>
+        </div>
       </div>
 
       <!-- FROM -->
@@ -47,14 +105,15 @@
             : 'bg-[#0b401e] text-[#b7f7c6]'
         ]"
         @click="getQuote"
+        :disabled="!isConnected"
       >
-        Get Quote
+        {{ isConnected ? 'Get Quote & Sign' : 'Connect Wallet to Get Quote' }}
       </button>
 
       <!-- WALLET -->
       <button
-        v-if="!walletConnected"
-        @click="connectWallet"
+        v-if="!isConnected"
+        @click="handleWalletClick"
         :class="[
           'w-full rounded-xl py-2 font-semibold',
           isNight ? 'bg-[#b7f7c6] text-black' : 'bg-[#09320f] text-white'
@@ -62,11 +121,28 @@
       >
         Connect Wallet
       </button>
-      <div
-        v-else
-        class="w-full rounded-xl py-2 font-semibold flex items-center justify-center border"
-      >
-        Wallet Connected
+
+      <div v-else class="space-y-2">
+        <!-- Connected address display -->
+        <div
+          :class="[
+            'w-full rounded-xl py-2 font-semibold border text-center',
+            isNight ? 'border-white' : 'border-[#0b401e]'
+          ]"
+        >
+          {{ formatAddress(address) }}
+        </div>
+        
+        <!-- Disconnect button -->
+        <button
+          @click="handleWalletClick"
+          :class="[
+            'w-full rounded-xl py-2 font-semibold',
+            isNight ? 'bg-[#b7f7c6] text-black' : 'bg-[#09320f] text-white'
+          ]"
+        >
+          Disconnect Wallet
+        </button>
       </div>
 
       <!-- TOGGLE BUTTONS -->
@@ -132,25 +208,32 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useTheme } from '../composables/ThemeContext'
+import { useWeb3 } from '../composables/useWeb3'
 import TokenSelect from './TokenSelect.vue'
 import NumberInput from './NumberInput.vue'
 import SlippageSlider from './SlippageSlider.vue'
 
 const { isNight } = useTheme()
+const { 
+  address, 
+  isConnected, 
+  connectWallet, 
+  disconnectWallet, 
+  formatAddress, 
+  signMessage,
+  switchChain,
+  chainId
+} = useWeb3()
+
 const TOKENS = ['USDC', 'ETH', 'ARC', 'DAI']
 
 const fromToken = ref('USDC')
 const toToken = ref('ETH')
 const fromAmount = ref('')
 const toAmount = ref('')
-const walletConnected = ref(false)
 const slippage = ref(0.5)
 const showPoolOverview = ref(false)
 const showLPPositions = ref(false)
-
-const connectWallet = () => {
-  walletConnected.value = true
-}
 
 const format = (n: string | number) => {
   if (n === '' || n === null || n === undefined) return ''
@@ -159,9 +242,59 @@ const format = (n: string | number) => {
   return num.toLocaleString(undefined, { maximumFractionDigits: 6 })
 }
 
-const getQuote = () => {
+const getQuote = async () => {
+  if (!isConnected.value) {
+    alert('Please connect your wallet first')
+    return
+  }
+
   toAmount.value = fromAmount.value
     ? (Number(fromAmount.value) * 0.98).toString()
     : ''
+
+  // Sign the swap transaction
+  try {
+    const message = `Swap ${fromAmount.value} ${fromToken.value} for ${toAmount.value} ${toToken.value} with ${slippage.value}% slippage`
+    const signature = await signMessage(message)
+    console.log('Swap signed:', signature)
+    alert('Quote received and signed!')
+  } catch (error) {
+    console.error('Failed to sign swap:', error)
+    alert('Failed to sign transaction')
+  }
+}
+
+const handleWalletClick = async () => {
+  if (isConnected.value) {
+    disconnectWallet()
+  } else {
+    try {
+      await connectWallet()
+    } catch (error) {
+      console.error('Failed to connect wallet:', error)
+    }
+  }
+}
+
+// Add chain switching function
+const handleChainSwitch = async (targetChainId: number) => {
+  try {
+    await switchChain(targetChainId)
+  } catch (error) {
+    console.error('Failed to switch chain:', error)
+    alert('Failed to switch network')
+  }
+}
+
+// Example: Sign a message
+const handleSignMessage = async () => {
+  try {
+    const message = `Confirm swap: ${fromAmount.value} ${fromToken.value} to ${toToken.value}`
+    const signature = await signMessage(message)
+    console.log('Signature:', signature)
+    alert('Message signed successfully!')
+  } catch (error) {
+    console.error('Failed to sign message:', error)
+  }
 }
 </script>
