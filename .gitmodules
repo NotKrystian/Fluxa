@@ -1,0 +1,3 @@
+[submodule "vendor/fluxa"]
+	path = vendor/fluxa
+	url = https://github.com/NotKrystian/Fluxa

@@ -1,9 +1,9 @@
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, shallowRef } from 'vue'
 import { BrowserProvider, JsonRpcSigner } from 'ethers'
 
 export function useWeb3() {
-  const provider = ref<BrowserProvider | null>(null)
-  const signer = ref<JsonRpcSigner | null>(null)
+  const provider = shallowRef<BrowserProvider | null>(null)
+  const signer = shallowRef<JsonRpcSigner | null>(null)
   const address = ref<string>('')
   const chainId = ref<number | null>(null)
   const isConnecting = ref(false)

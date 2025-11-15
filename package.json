@@ -9,7 +9,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@uniswap/sdk-core": "^7.9.0",
+    "@uniswap/smart-order-router": "^4.22.34",
+    "@uniswap/v3-sdk": "^3.26.0",
     "ethers": "^6.15.0",
+    "graphql": "^16.12.0",
+    "graphql-request": "^7.3.3",
     "vue": "^3.4.0",
     "vue-router": "^4.2.5",
     "yarn": "^1.22.22"
