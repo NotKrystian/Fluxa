@@ -1,0 +1,15 @@
+{
+  "network": "Base Sepolia",
+  "chainId": 84532,
+  "timestamp": 1763271404292,
+  "deployer": "0xe8f14cD50Cfa48e366142815D2b63263849400cE",
+  "contracts": {
+    "VaultFactory": "0x92117cF45074230380E6a078A6077E653Ce54FFB",
+    "USDC": "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+  },
+  "config": {
+    "swapFeeBps": "30",
+    "feeRecipient": "0xe8f14cD50Cfa48e366142815D2b63263849400cE",
+    "governance": "0xe8f14cD50Cfa48e366142815D2b63263849400cE"
+  }
+}

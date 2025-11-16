@@ -34,14 +34,14 @@ const CHAINS = {
     name: "Base Sepolia",
     rpcUrl: process.env.BASE_SEPOLIA_RPC_URL || process.env.BASE_RPC_URL || "https://sepolia.base.org",
     chainId: 84532,
-    usdc: process.env.BASE_SEPOLIA_USDC_ADDRESS || "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+    usdc: process.env.BASE_SEPOLIA_USDC || process.env.BASE_SEPOLIA_USDC_ADDRESS || "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
     explorer: "https://sepolia.basescan.org"
   },
   'polygon-amoy': {
     name: "Polygon Amoy",
     rpcUrl: process.env.POLYGON_AMOY_RPC_URL || process.env.POLYGON_RPC_URL || "https://rpc-amoy.polygon.technology",
     chainId: 80002,
-    usdc: process.env.POLYGON_AMOY_USDC_ADDRESS || process.env.POLYGON_USDC_ADDRESS || "0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582",
+    usdc: process.env.POLYGON_AMOY_USDC || process.env.POLYGON_AMOY_USDC_ADDRESS || process.env.POLYGON_USDC_ADDRESS || "0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582",
     explorer: "https://amoy.polygonscan.com"
   }
 };
@@ -165,7 +165,7 @@ class GatewayLPDeployer {
 
         // Verify USDC address
         if (!chainConfig.usdc || chainConfig.usdc === '' || chainConfig.usdc === '0x0000000000000000000000000000000000000000') {
-          throw new Error(`USDC address not configured for ${chainConfig.name}. Please set USDC address in .env (e.g., ${chainKey.toUpperCase()}_USDC_ADDRESS or BASE_SEPOLIA_USDC_ADDRESS)`);
+          throw new Error(`USDC address not configured for ${chainConfig.name}. Please set USDC address in .env (e.g., ${chainKey.toUpperCase()}_USDC or BASE_SEPOLIA_USDC)`);
         }
         
         // Ensure address is valid hex format
@@ -267,7 +267,7 @@ class GatewayLPDeployer {
         
         // Validate USDC address is set and valid
         if (!usdcAddr) {
-          throw new Error(`USDC address not set for ${chainConfig.name}. Check .env file for ${chainKey.toUpperCase()}_USDC_ADDRESS or BASE_SEPOLIA_USDC_ADDRESS`);
+          throw new Error(`USDC address not set for ${chainConfig.name}. Check .env file for ${chainKey.toUpperCase()}_USDC or BASE_SEPOLIA_USDC`);
         }
         
         // Convert to address format and validate

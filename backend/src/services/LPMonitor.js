@@ -23,20 +23,68 @@ export class LPMonitor {
   initializeChains() {
     const chains = [
       {
-        name: 'sepolia',
-        chainId: 11155111,
-        rpcUrl: process.env.SEPOLIA_RPC_URL || 'https://ethereum-sepolia-rpc.publicnode.com',
-        factoryAddress: process.env.SEPOLIA_AMM_FACTORY,
-        vaultAddress: process.env.SEPOLIA_FLX_VAULT,
-        enabled: true
-      },
-      {
         name: 'arc',
         chainId: 5042002,
         rpcUrl: process.env.ARC_RPC_URL || 'https://hidden-cosmological-thunder.arc-testnet.quiknode.pro/e18d2b4649fda2fd51ef9f5a2c1d7d8fd132c886',
         factoryAddress: process.env.ARC_AMM_FACTORY,
         vaultAddress: process.env.ARC_FLX_VAULT,
         enabled: true
+      },
+      {
+        name: 'base',
+        chainId: 84532,
+        rpcUrl: process.env.BASE_SEPOLIA_RPC_URL || process.env.BASE_RPC_URL || 'https://sepolia.base.org',
+        factoryAddress: process.env.BASE_SEPOLIA_AMM_FACTORY || process.env.BASE_AMM_FACTORY,
+        vaultAddress: process.env.BASE_SEPOLIA_FLX_VAULT || process.env.BASE_FLX_VAULT,
+        enabled: true
+      },
+      {
+        name: 'polygon-amoy',
+        chainId: 80002,
+        rpcUrl: process.env.POLYGON_AMOY_RPC_URL || process.env.POLYGON_RPC_URL || 'https://rpc-amoy.polygon.technology',
+        factoryAddress: process.env.POLYGON_AMOY_AMM_FACTORY || process.env.POLYGON_AMM_FACTORY,
+        vaultAddress: process.env.POLYGON_AMOY_FLX_VAULT || process.env.POLYGON_FLX_VAULT,
+        enabled: true
+      },
+      {
+        name: 'arbitrum-sepolia',
+        chainId: 421614,
+        rpcUrl: process.env.ARBITRUM_SEPOLIA_RPC_URL || process.env.ARBITRUM_RPC_URL || 'https://sepolia-rollup.arbitrum.io/rpc',
+        factoryAddress: process.env.ARBITRUM_SEPOLIA_AMM_FACTORY || process.env.ARBITRUM_AMM_FACTORY,
+        vaultAddress: process.env.ARBITRUM_SEPOLIA_FLX_VAULT || process.env.ARBITRUM_FLX_VAULT,
+        enabled: true
+      },
+      {
+        name: 'avalanche-fuji',
+        chainId: 43113,
+        rpcUrl: process.env.AVALANCHE_FUJI_RPC_URL || process.env.AVALANCHE_RPC_URL || 'https://api.avax-test.network/ext/bc/C/rpc',
+        factoryAddress: process.env.AVALANCHE_FUJI_AMM_FACTORY || process.env.AVALANCHE_AMM_FACTORY,
+        vaultAddress: process.env.AVALANCHE_FUJI_FLX_VAULT || process.env.AVALANCHE_FLX_VAULT,
+        enabled: true
+      },
+      {
+        name: 'optimism-sepolia',
+        chainId: 11155420,
+        rpcUrl: process.env.OPTIMISM_SEPOLIA_RPC_URL || process.env.OPTIMISM_RPC_URL || 'https://sepolia.optimism.io',
+        factoryAddress: process.env.OPTIMISM_SEPOLIA_AMM_FACTORY || process.env.OPTIMISM_AMM_FACTORY,
+        vaultAddress: process.env.OPTIMISM_SEPOLIA_FLX_VAULT || process.env.OPTIMISM_FLX_VAULT,
+        enabled: true
+      },
+      {
+        name: 'codex-testnet',
+        chainId: 812242,
+        rpcUrl: process.env.CODEX_TESTNET_RPC_URL || process.env.CODEX_RPC_URL || 'https://812242.rpc.thirdweb.com',
+        factoryAddress: process.env.CODEX_TESTNET_AMM_FACTORY || process.env.CODEX_AMM_FACTORY,
+        vaultAddress: process.env.CODEX_TESTNET_FLX_VAULT || process.env.CODEX_FLX_VAULT,
+        enabled: true
+      },
+      {
+        name: 'unichain-sepolia',
+        chainId: 1301,
+        rpcUrl: process.env.UNICHAIN_SEPOLIA_RPC_URL || process.env.UNICHAIN_RPC_URL,
+        factoryAddress: process.env.UNICHAIN_SEPOLIA_AMM_FACTORY || process.env.UNICHAIN_AMM_FACTORY,
+        vaultAddress: process.env.UNICHAIN_SEPOLIA_FLX_VAULT || process.env.UNICHAIN_FLX_VAULT,
+        enabled: !!process.env.UNICHAIN_SEPOLIA_RPC_URL || !!process.env.UNICHAIN_RPC_URL
       }
     ];
 
@@ -81,7 +129,7 @@ export class LPMonitor {
    */
   async fetchAllDepths() {
     const chainNames = Array.from(this.chains.keys());
-    console.log(`Fetching LP depths for chains: ${chainNames.join(', ')}`);
+    // console.log(`Fetching LP depths for chains: ${chainNames.join(', ')}`); // MUTED
     
     const results = await Promise.allSettled(
       chainNames.map(chain => this.fetchChainDepths(chain))
@@ -93,9 +141,10 @@ export class LPMonitor {
       
       if (result.status === 'fulfilled') {
         const depths = result.value;
-        console.log(`✅ ${chainName}: Found ${depths.length} pool(s), TVL: $${depths.reduce((sum, d) => sum + (d.tvl || 0), 0).toLocaleString()}`);
+        // console.log(`✅ ${chainName}: Found ${depths.length} pool(s), TVL: $${depths.reduce((sum, d) => sum + (d.tvl || 0), 0).toLocaleString()}`); // MUTED
       } else {
-        console.error(`❌ Error fetching ${chainName} depths:`, result.reason?.message || result.reason);
+        // Only log errors (not regular updates)
+        // console.error(`❌ Error fetching ${chainName} depths:`, result.reason?.message || result.reason);
         // Store mock data on error
         this.pools.set(chainName, this.generateMockDepths(chainName));
       }
@@ -120,20 +169,20 @@ export class LPMonitor {
         const reserve1BigInt = BigInt(vaultDepth.reserve1 || '0');
         if (vaultDepth && (reserve0BigInt > 0n || reserve1BigInt > 0n)) {
           depths.push(vaultDepth);
-          console.log(`✅ ${chainName}: Vault (pool) has liquidity - FLX: ${vaultDepth.reserve0Formatted}, USDC: ${vaultDepth.reserve1Formatted}`);
+          // console.log(`✅ ${chainName}: Vault (pool) has liquidity - FLX: ${vaultDepth.reserve0Formatted}, USDC: ${vaultDepth.reserve1Formatted}`); // MUTED
         } else {
-          console.log(`⚠️  ${chainName}: Vault exists but has no liquidity yet`);
+          // console.log(`⚠️  ${chainName}: Vault exists but has no liquidity yet`); // MUTED
         }
       } catch (error) {
-        console.warn(`Could not fetch vault depth for ${chainName}:`, error.message);
+        // console.warn(`Could not fetch vault depth for ${chainName}:`, error.message); // MUTED
       }
     } else {
-      console.log(`⚠️  ${chainName}: No vault address configured`);
+      // console.log(`⚠️  ${chainName}: No vault address configured`); // MUTED
     }
 
     // If no depths found from vaults, use mock data
     if (depths.length === 0) {
-      console.log(`No liquidity found on ${chainName} vault, using mock data`);
+      // console.log(`No liquidity found on ${chainName} vault, using mock data`); // MUTED
       return this.generateMockDepths(chainName);
     }
 
@@ -325,8 +374,14 @@ export class LPMonitor {
     // Generate realistic mock data based on chain
     // User has 1 USDC + 1000 FLX on each chain
     const baseReserves = {
-      sepolia: { flx: 1000, usdc: 1 },
-      arc: { flx: 1000, usdc: 1 }
+      arc: { flx: 1000, usdc: 1 },
+      base: { flx: 1000, usdc: 1 },
+      'polygon-amoy': { flx: 1000, usdc: 1 },
+      'arbitrum-sepolia': { flx: 1000, usdc: 1 },
+      'avalanche-fuji': { flx: 1000, usdc: 1 },
+      'optimism-sepolia': { flx: 1000, usdc: 1 },
+      'codex-testnet': { flx: 1000, usdc: 1 },
+      'unichain-sepolia': { flx: 1000, usdc: 1 }
     };
 
     const reserves = baseReserves[chainName] || { flx: 1000, usdc: 1 };

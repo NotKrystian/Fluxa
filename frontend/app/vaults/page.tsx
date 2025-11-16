@@ -3,12 +3,18 @@
 import { useState, useEffect } from 'react'
 import { ethers } from 'ethers'
 import { Plus, Minus, RefreshCw, Wallet, CheckCircle2, XCircle, Database } from 'lucide-react'
-import { depositToVault, withdrawFromVault, getVaultInfo } from '@/utils/vaults'
+import { depositToVault, withdrawFromVault, getVaultInfo, getUserVaults } from '@/utils/vaults'
 import { getSigner, getTokenBalance, formatTokenAmount, parseTokenAmount } from '@/utils/contracts'
 
 const CHAINS = [
-  { id: 'sepolia', name: 'Ethereum Sepolia', chainId: 11155111, rpc: 'https://ethereum-sepolia-rpc.publicnode.com' },
-  { id: 'arc', name: 'Arc Testnet', chainId: 5042002, rpc: 'https://rpc.testnet.arc.network' }
+  { id: 'arc', name: 'Arc Testnet', chainId: 5042002, rpc: process.env.NEXT_PUBLIC_ARC_RPC_URL || 'https://rpc.testnet.arc.network', nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 18 }, explorer: 'https://testnet.arcscan.net' },
+  { id: 'base', name: 'Base Sepolia', chainId: 84532, rpc: process.env.NEXT_PUBLIC_BASE_SEPOLIA_RPC_URL || 'https://sepolia.base.org', nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 }, explorer: 'https://sepolia.basescan.org' },
+  { id: 'polygon-amoy', name: 'Polygon Amoy', chainId: 80002, rpc: process.env.NEXT_PUBLIC_POLYGON_AMOY_RPC_URL || 'https://rpc-amoy.polygon.technology', nativeCurrency: { name: 'MATIC', symbol: 'MATIC', decimals: 18 }, explorer: 'https://amoy.polygonscan.com' },
+  { id: 'arbitrum-sepolia', name: 'Arbitrum Sepolia', chainId: 421614, rpc: process.env.NEXT_PUBLIC_ARBITRUM_SEPOLIA_RPC_URL || 'https://sepolia-rollup.arbitrum.io/rpc', nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 }, explorer: 'https://sepolia.arbiscan.io' },
+  { id: 'avalanche-fuji', name: 'Avalanche Fuji', chainId: 43113, rpc: process.env.NEXT_PUBLIC_AVALANCHE_FUJI_RPC_URL || 'https://api.avax-test.network/ext/bc/C/rpc', nativeCurrency: { name: 'AVAX', symbol: 'AVAX', decimals: 18 }, explorer: 'https://testnet.snowtrace.io' },
+  { id: 'optimism-sepolia', name: 'Optimism Sepolia', chainId: 11155420, rpc: process.env.NEXT_PUBLIC_OPTIMISM_SEPOLIA_RPC_URL || 'https://sepolia.optimism.io', nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 }, explorer: 'https://sepolia-optimistic.etherscan.io' },
+  { id: 'codex-testnet', name: 'Codex Testnet', chainId: 812242, rpc: process.env.NEXT_PUBLIC_CODEX_TESTNET_RPC_URL || 'https://812242.rpc.thirdweb.com', nativeCurrency: { name: 'CDX', symbol: 'CDX', decimals: 18 }, explorer: 'https://explorer.codex-stg.xyz' },
+  { id: 'unichain-sepolia', name: 'Unichain Sepolia', chainId: 1301, rpc: process.env.NEXT_PUBLIC_UNICHAIN_SEPOLIA_RPC_URL || 'https://sepolia.unichain.io', nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 }, explorer: '' }
 ];
 
 export default function VaultsPage() {
@@ -18,8 +24,11 @@ export default function VaultsPage() {
   const [currentChainId, setCurrentChainId] = useState<number | null>(null)
   
   const [vaultAddress, setVaultAddress] = useState('')
+  const [selectedVault, setSelectedVault] = useState<string | null>(null)
   const [vaultInfo, setVaultInfo] = useState<any>(null)
   const [loading, setLoading] = useState(false)
+  const [loadingVaults, setLoadingVaults] = useState(false)
+  const [userVaults, setUserVaults] = useState<Array<{ vault: string; projectToken: string; tokenBalance: string; tokenSymbol: string; tokenName: string }>>([])
   
   const [depositTokenAmount, setDepositTokenAmount] = useState('')
   const [depositUsdcAmount, setDepositUsdcAmount] = useState('')
@@ -34,34 +43,111 @@ export default function VaultsPage() {
   const [flxBalance, setFlxBalance] = useState('0')
   const [usdcBalance, setUsdcBalance] = useState('0')
 
-  // Load vault address from env based on selected chain
-  // Note: Next.js requires direct references to process.env, dynamic access doesn't work
-  useEffect(() => {
-    let addr = '';
-    
-    if (selectedChain === 'arc') {
-      addr = process.env.NEXT_PUBLIC_ARC_FLX_VAULT || '';
-    } else if (selectedChain === 'sepolia') {
-      addr = process.env.NEXT_PUBLIC_SEPOLIA_FLX_VAULT || '';
+  // Get VaultFactory address from env based on selected chain
+  const getVaultFactoryAddress = (chainId: string): string => {
+    // Direct access to process.env (Next.js requirement)
+    if (chainId === 'arc') {
+      return process.env.NEXT_PUBLIC_ARC_VAULT_FACTORY || '';
+    } else if (chainId === 'base' || chainId === 'base-sepolia') {
+      return process.env.NEXT_PUBLIC_BASE_VAULT_FACTORY || process.env.NEXT_PUBLIC_BASE_SEPOLIA_VAULT_FACTORY || '';
+    } else if (chainId === 'polygon-amoy') {
+      return process.env.NEXT_PUBLIC_POLYGON_AMOY_VAULT_FACTORY || '';
+    } else if (chainId === 'arbitrum-sepolia') {
+      return process.env.NEXT_PUBLIC_ARBITRUM_SEPOLIA_VAULT_FACTORY || '';
+    } else if (chainId === 'avalanche-fuji') {
+      return process.env.NEXT_PUBLIC_AVALANCHE_FUJI_VAULT_FACTORY || '';
+    } else if (chainId === 'optimism-sepolia') {
+      return process.env.NEXT_PUBLIC_OPTIMISM_SEPOLIA_VAULT_FACTORY || '';
+    } else if (chainId === 'codex-testnet') {
+      return process.env.NEXT_PUBLIC_CODEX_TESTNET_VAULT_FACTORY || '';
+    } else if (chainId === 'unichain-sepolia') {
+      return process.env.NEXT_PUBLIC_UNICHAIN_SEPOLIA_VAULT_FACTORY || '';
     }
-    
-    console.log(`Loading vault for ${selectedChain}:`, {
-      address: addr || 'NOT SET',
-      expectedChainId: CHAINS.find(c => c.id === selectedChain)?.chainId,
-      envVar: selectedChain === 'arc' ? 'NEXT_PUBLIC_ARC_FLX_VAULT' : 'NEXT_PUBLIC_SEPOLIA_FLX_VAULT'
-    });
-    
-    setVaultAddress(addr);
-    setVaultInfo(null); // Clear vault info when chain changes
-  }, [selectedChain]);
+    return '';
+  };
 
-  // Load vault info when vault address or user changes
+  // Load user's vaults when chain or user changes
   useEffect(() => {
-    if (connected && userAddress && vaultAddress) {
-      loadVaultInfo(userAddress);
+    // Clear selected vault when chain changes (prevents using wrong chain's vault)
+    setSelectedVault(null);
+    setVaultInfo(null);
+    
+    if (connected && userAddress) {
+      loadUserVaults();
+    } else {
+      setUserVaults([]);
+      setSelectedVault(null);
+      setVaultInfo(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [connected, userAddress, vaultAddress]);
+  }, [connected, userAddress, selectedChain]);
+
+  // Load user vaults from VaultFactory
+  const loadUserVaults = async () => {
+    if (!userAddress) return;
+
+    setLoadingVaults(true);
+    setError('');
+    
+    try {
+      const chain = CHAINS.find(c => c.id === selectedChain);
+      if (!chain) {
+        setError('Invalid chain selected');
+        return;
+      }
+
+      const vaultFactoryAddress = getVaultFactoryAddress(selectedChain);
+      if (!vaultFactoryAddress) {
+        const envVarNames = selectedChain === 'base' 
+          ? 'NEXT_PUBLIC_BASE_VAULT_FACTORY or NEXT_PUBLIC_BASE_SEPOLIA_VAULT_FACTORY'
+          : `NEXT_PUBLIC_${selectedChain.toUpperCase().replace(/-/g, '_')}_VAULT_FACTORY`;
+        console.warn(`VaultFactory not configured for ${selectedChain}`);
+        console.warn(`Looking for: ${envVarNames}`);
+        setError(`VaultFactory not configured. Please set ${envVarNames} in your .env.local file.`);
+        setUserVaults([]);
+        return;
+      }
+
+      const provider = new ethers.JsonRpcProvider(chain.rpc);
+      const vaults = await getUserVaults(vaultFactoryAddress, userAddress, provider);
+      
+      setUserVaults(vaults);
+      
+      // Auto-select first vault if available
+      if (vaults.length > 0) {
+        // Always update to first vault (in case chain changed)
+        setSelectedVault(vaults[0].vault);
+      } else {
+        // Clear selection if no vaults found
+        setSelectedVault(null);
+        setVaultInfo(null);
+      }
+    } catch (err: any) {
+      console.error('Error loading user vaults:', err);
+      setError(`Error loading vaults: ${err.message || 'Unknown error'}`);
+      setUserVaults([]);
+    } finally {
+      setLoadingVaults(false);
+    }
+  };
+
+  // Load vault info when selected vault or user changes
+  useEffect(() => {
+    if (connected && userAddress && selectedVault) {
+      // Verify selectedVault is valid for current chain
+      const isValidVault = userVaults.some(v => v.vault === selectedVault);
+      if (isValidVault) {
+        loadVaultInfo(userAddress);
+      } else {
+        // Invalid vault for this chain, clear it
+        setSelectedVault(null);
+        setVaultInfo(null);
+      }
+    } else {
+      setVaultInfo(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connected, userAddress, selectedVault, userVaults]);
 
   // Update balances when vault info is loaded
   useEffect(() => {
@@ -105,14 +191,14 @@ export default function VaultsPage() {
 
   // Load vault info
   const loadVaultInfo = async (user: string) => {
-    if (!vaultAddress) {
-      console.log('No vault address set, skipping load');
+    if (!selectedVault) {
+      console.log('No vault selected, skipping load');
       return;
     }
     
     setLoading(true);
     setError('');
-    console.log(`Loading vault info for ${vaultAddress} on ${selectedChain}...`);
+    console.log(`Loading vault info for ${selectedVault} on ${selectedChain}...`);
     
     try {
       const chain = CHAINS.find(c => c.id === selectedChain);
@@ -132,10 +218,11 @@ export default function VaultsPage() {
         return;
       }
 
-      const info = await getVaultInfo(vaultAddress, user, provider);
+      const info = await getVaultInfo(selectedVault, user, provider);
       
       if (info) {
         setVaultInfo(info);
+        setVaultAddress(selectedVault); // Set for backward compatibility with deposit/withdraw
         console.log('Vault info loaded successfully');
       } else {
         setError('Failed to load vault info');
@@ -235,15 +322,13 @@ export default function VaultsPage() {
                   params: [{
                     chainId: `0x${chain.chainId.toString(16)}`,
                     chainName: chain.name,
-                    nativeCurrency: {
-                      name: selectedChain === 'arc' ? 'USDC' : 'ETH',
-                      symbol: selectedChain === 'arc' ? 'USDC' : 'ETH',
-                      decimals: selectedChain === 'arc' ? 6 : 18,
+                    nativeCurrency: chain.nativeCurrency || {
+                      name: 'ETH',
+                      symbol: 'ETH',
+                      decimals: 18,
                     },
                     rpcUrls: [chain.rpc],
-                    blockExplorerUrls: selectedChain === 'arc' 
-                      ? ['https://testnet.arcscan.net'] 
-                      : ['https://sepolia.etherscan.io'],
+                    blockExplorerUrls: chain.explorer ? [chain.explorer] : [],
                   }],
                 });
                 setStatus('Network added. Please try depositing again.');
@@ -411,81 +496,115 @@ export default function VaultsPage() {
           </div>
         )}
 
-        {connected && vaultAddress && (
+        {connected && (
           <button
             onClick={() => {
-              loadVaultInfo(userAddress);
-              updateTokenBalances(userAddress);
+              loadUserVaults();
+              if (selectedVault) {
+                loadVaultInfo(userAddress);
+                updateTokenBalances(userAddress);
+              }
             }}
-            disabled={loading}
+            disabled={loadingVaults || loading}
             className="p-2 rounded-lg border border-gray-300 hover:border-arc-blue transition-colors"
-            title="Refresh vault info"
+            title="Refresh vaults"
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-4 h-4 ${loadingVaults || loading ? 'animate-spin' : ''}`} />
           </button>
         )}
       </div>
 
-      {!vaultAddress && (
+      {/* User Vaults List */}
+      {connected && userAddress && (
+        <div className="mb-6 bg-white dark:bg-gray-900 rounded-xl border-2 border-gray-200 dark:border-gray-800 p-6">
+          <h2 className="text-xl font-semibold mb-4">Your Vaults</h2>
+          {loadingVaults ? (
+            <div className="text-center py-8 text-gray-600 dark:text-gray-400">
+              <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2" />
+              <p>Loading your vaults...</p>
+            </div>
+          ) : userVaults.length === 0 ? (
+            <div className="text-center py-8 text-gray-600 dark:text-gray-400">
+              <Database className="w-12 h-12 mx-auto mb-3 opacity-50" />
+              <p>No vaults found on {CHAINS.find(c => c.id === selectedChain)?.name}</p>
+              {error && error.includes('VaultFactory not configured') ? (
+                <div className="mt-4 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+                  <p className="text-sm text-yellow-800 dark:text-yellow-200 font-semibold">{error}</p>
+                  <p className="text-xs text-yellow-700 dark:text-yellow-300 mt-2">
+                    Add it to <code className="bg-yellow-100 dark:bg-yellow-900 px-1 rounded">frontend/.env.local</code>
+                  </p>
+                </div>
+              ) : (
+                <p className="text-sm mt-2">Make sure VaultFactory is configured for this chain</p>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {userVaults.map((vault) => (
+                <button
+                  key={vault.vault}
+                  onClick={() => setSelectedVault(vault.vault)}
+                  className={`w-full text-left p-4 rounded-lg border-2 transition-all ${
+                    selectedVault === vault.vault
+                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                      : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <div className="font-semibold text-lg">{vault.tokenName} ({vault.tokenSymbol})</div>
+                      <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                        Balance: {formatTokenAmount(BigInt(vault.tokenBalance), 18)} {vault.tokenSymbol}
+                      </div>
+                      <div className="text-xs text-gray-500 dark:text-gray-500 mt-1 font-mono">
+                        Vault: {vault.vault.slice(0, 6)}...{vault.vault.slice(-4)}
+                      </div>
+                    </div>
+                    {selectedVault === vault.vault && (
+                      <CheckCircle2 className="w-5 h-5 text-blue-500" />
+                    )}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {connected && !selectedVault && userVaults.length === 0 && !loadingVaults && (
         <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-6 mb-6">
           <div className="flex items-start space-x-3 mb-4">
             <XCircle className="w-5 h-5 text-yellow-600 dark:text-yellow-400 flex-shrink-0 mt-0.5" />
             <div>
               <p className="text-yellow-800 dark:text-yellow-200 font-semibold">
-                No vault address for {CHAINS.find(c => c.id === selectedChain)?.name}
+                No vaults found for tokens you hold on {CHAINS.find(c => c.id === selectedChain)?.name}
               </p>
               <p className="text-sm text-yellow-700 dark:text-yellow-300 mt-1">
-                Looking for: NEXT_PUBLIC_{selectedChain.toUpperCase()}_FLX_VAULT
+                Make sure VaultFactory is configured. Looking for: {(() => {
+                  const envVarMap: Record<string, string> = {
+                    'arc': 'NEXT_PUBLIC_ARC_VAULT_FACTORY',
+                    'base': 'NEXT_PUBLIC_BASE_VAULT_FACTORY or NEXT_PUBLIC_BASE_SEPOLIA_VAULT_FACTORY',
+                    'polygon-amoy': 'NEXT_PUBLIC_POLYGON_AMOY_VAULT_FACTORY',
+                    'arbitrum-sepolia': 'NEXT_PUBLIC_ARBITRUM_SEPOLIA_VAULT_FACTORY',
+                    'avalanche-fuji': 'NEXT_PUBLIC_AVALANCHE_FUJI_VAULT_FACTORY',
+                    'optimism-sepolia': 'NEXT_PUBLIC_OPTIMISM_SEPOLIA_VAULT_FACTORY',
+                    'codex-testnet': 'NEXT_PUBLIC_CODEX_TESTNET_VAULT_FACTORY',
+                    'unichain-sepolia': 'NEXT_PUBLIC_UNICHAIN_SEPOLIA_VAULT_FACTORY'
+                  };
+                  return envVarMap[selectedChain] || `NEXT_PUBLIC_${selectedChain.toUpperCase().replace(/-/g, '_')}_VAULT_FACTORY`;
+                })()}
               </p>
-              <p className="text-sm text-yellow-700 dark:text-yellow-300 mt-1">
-                Follow these steps to deploy vaults:
+              <p className="text-sm text-yellow-700 dark:text-yellow-300 mt-2">
+                The vaults page automatically detects tokens you hold and shows their associated vaults. 
+                If you have tokens but no vaults appear, the VaultFactory may not be deployed or configured for this chain.
               </p>
             </div>
-          </div>
-          
-          <div className="ml-8 space-y-3 text-sm text-yellow-800 dark:text-yellow-200">
-            <div className="p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded">
-              <p className="font-semibold text-red-800 dark:text-red-200">⚠️ FRONTEND NOT RESTARTED</p>
-              <p className="text-xs mt-1 text-red-700 dark:text-red-300">
-                Vaults are already deployed! The frontend just needs to be restarted.
-              </p>
-            </div>
-
-            <p><strong>Solution:</strong> Restart the frontend dev server:</p>
-            <code className="block bg-yellow-100 dark:bg-yellow-800 p-2 rounded text-xs ml-4">
-              # Stop frontend (Ctrl+C), then:<br/>
-              cd frontend && npm run dev
-            </code>
-            
-            <p className="mt-2 text-xs">
-              Next.js only loads environment variables at startup. Since deployment created <code className="bg-yellow-100 dark:bg-yellow-800 px-1 rounded">frontend/.env.local</code> with vault addresses, you must restart to see them.
-            </p>
-
-            <details className="mt-3">
-              <summary className="cursor-pointer font-semibold">Or deploy from scratch:</summary>
-              <div className="mt-2 ml-4 space-y-2">
-                <p><strong>1.</strong> Add Arc USDC to <code className="bg-yellow-100 dark:bg-yellow-800 px-2 py-0.5 rounded">.env</code>:</p>
-                <code className="block bg-yellow-100 dark:bg-yellow-800 p-2 rounded text-xs">
-                  ARC_USDC_ADDRESS=0x3600000000000000000000000000000000000000
-                </code>
-                
-                <p className="mt-2"><strong>2.</strong> Run deployment:</p>
-                <code className="block bg-yellow-100 dark:bg-yellow-800 p-2 rounded text-xs">
-                  npm run deploy
-                </code>
-                
-                <p className="mt-2"><strong>3.</strong> Restart frontend:</p>
-                <code className="block bg-yellow-100 dark:bg-yellow-800 p-2 rounded text-xs">
-                  cd frontend && npm run dev
-                </code>
-              </div>
-            </details>
           </div>
         </div>
       )}
 
       {/* Loading State */}
-      {loading && vaultAddress && !vaultInfo && (
+      {loading && selectedVault && !vaultInfo && (
         <div className="gradient-card rounded-xl border border-gray-200 dark:border-gray-800 p-8 mb-6 text-center">
           <RefreshCw className="w-12 h-12 mx-auto mb-4 text-arc-blue animate-spin" />
           <p className="text-gray-600 dark:text-gray-400">Loading vault information...</p>
@@ -493,11 +612,14 @@ export default function VaultsPage() {
       )}
 
       {/* Vault Overview */}
-      {vaultInfo && (
+      {vaultInfo && selectedVault && (
         <div className="gradient-card rounded-xl border border-gray-200 dark:border-gray-800 p-6 mb-6">
           <h2 className="text-xl font-semibold mb-4 flex items-center">
             <Database className="w-6 h-6 mr-2 text-arc-blue" />
-            FLX Vault - {CHAINS.find(c => c.id === selectedChain)?.name}
+            {(() => {
+              const vault = userVaults.find(v => v.vault === selectedVault);
+              return vault ? `${vault.tokenName} Vault` : 'Vault';
+            })()} - {CHAINS.find(c => c.id === selectedChain)?.name}
           </h2>
 
           <div className="grid md:grid-cols-3 gap-4 mb-4">
@@ -700,7 +822,7 @@ export default function VaultsPage() {
         
         <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
           <p className="text-sm text-blue-800 dark:text-blue-200">
-            <strong>Multi-Chain Liquidity:</strong> Vaults exist on both Sepolia and Arc. Deposit on either chain, and governance can use your liquidity for optimal routing while you maintain full withdrawal rights.
+            <strong>Multi-Chain Liquidity:</strong> Vaults exist on all supported chains (Arc, Base Sepolia, Polygon Amoy, Arbitrum Sepolia, Avalanche Fuji, Optimism Sepolia, Codex Testnet, Unichain Sepolia). Deposit on any chain, and governance can use your liquidity for optimal routing while you maintain full withdrawal rights.
           </p>
         </div>
       </div>

@@ -41,6 +41,26 @@ export class RouteOptimizer {
       'polygon-amoy': {
         flx: process.env.POLYGON_AMOY_FLX_TOKEN || process.env.POLYGON_FLX_TOKEN || '',
         usdc: process.env.POLYGON_AMOY_USDC_ADDRESS || process.env.POLYGON_USDC_ADDRESS || ''
+      },
+      'arbitrum-sepolia': {
+        flx: process.env.ARBITRUM_SEPOLIA_FLX_TOKEN || process.env.ARBITRUM_FLX_TOKEN || '',
+        usdc: process.env.ARBITRUM_SEPOLIA_USDC_ADDRESS || process.env.ARBITRUM_USDC_ADDRESS || ''
+      },
+      'avalanche-fuji': {
+        flx: process.env.AVALANCHE_FUJI_FLX_TOKEN || process.env.AVALANCHE_FLX_TOKEN || '',
+        usdc: process.env.AVALANCHE_FUJI_USDC_ADDRESS || process.env.AVALANCHE_USDC_ADDRESS || ''
+      },
+      'optimism-sepolia': {
+        flx: process.env.OPTIMISM_SEPOLIA_FLX_TOKEN || process.env.OPTIMISM_FLX_TOKEN || '',
+        usdc: process.env.OPTIMISM_SEPOLIA_USDC_ADDRESS || process.env.OPTIMISM_USDC_ADDRESS || ''
+      },
+      'codex-testnet': {
+        flx: process.env.CODEX_TESTNET_FLX_TOKEN || process.env.CODEX_FLX_TOKEN || '',
+        usdc: process.env.CODEX_TESTNET_USDC_ADDRESS || process.env.CODEX_USDC_ADDRESS || ''
+      },
+      'unichain-sepolia': {
+        flx: process.env.UNICHAIN_SEPOLIA_FLX_TOKEN || process.env.UNICHAIN_FLX_TOKEN || '',
+        usdc: process.env.UNICHAIN_SEPOLIA_USDC_ADDRESS || process.env.UNICHAIN_USDC_ADDRESS || ''
       }
     };
     
@@ -60,7 +80,12 @@ export class RouteOptimizer {
       'base-sepolia': 0.001,
       basesepolia: 0.001,
       polygon: 0.001, // Polygon Amoy gas estimate
-      'polygon-amoy': 0.001
+      'polygon-amoy': 0.001,
+      'arbitrum-sepolia': 0.001,
+      'avalanche-fuji': 0.001,
+      'optimism-sepolia': 0.001,
+      'codex-testnet': 0.001,
+      'unichain-sepolia': 0.001
     };
     
     // CCTP transfer fee (per transfer, in USD)
@@ -240,16 +265,25 @@ export class RouteOptimizer {
   }
 
   /**
-   * Find optimal route - evaluates all combinations
+   * Find optimal route - evaluates LPs incrementally
    * 
-   * Structure:
-   * 1. Local vault only
-   * 2. Local + chain 1
-   * 3. Local + chain 1 + chain 2
-   * ... up to all chains
+   * Key Constraint: User always starts and finishes on the same chain.
+   * Cross-chain routing is purely internal for better execution.
    * 
-   * For each: Gross Output - Gas Cost (in tokens) = Net Output
+   * Evaluation Strategy:
+   * 1. Local vault only (no cross-chain)
+   * 2. Local + Arc (migrate Arc LP to user chain, execute locally)
+   * 3. Local + Arc + Polygon (migrate both, execute locally)
+   * ... up to all available chains
+   * 
+   * For each: Gross Output - Gas Cost (user pays) = Net Output
    * Pick highest net output
+   * 
+   * Gas costs include:
+   * - Local swap gas
+   * - CCTP transfer fees (per remote chain)
+   * - Gateway wrapping fees (per remote chain, if FLX)
+   * - LayerZero message fees (per remote chain)
    */
   async findOptimalRoute({ tokenIn, tokenOut, amountIn, sourceChain }) {
     console.log('\n═══════════════════════════════════════════════════════════════');
@@ -336,58 +370,104 @@ export class RouteOptimizer {
     }
     console.log('');
 
-    // OPTIONS 2-N: Local + remote chains (all combinations)
-    // Generate combinations: Local + 1 chain, Local + 2 chains, ..., Local + all chains
-    for (let i = 1; i <= remotePools.length; i++) {
-      const combinations = this.getCombinations(remotePools, i);
+    // OPTIONS 2-N: Local + remote chains (incremental evaluation)
+    // Evaluate incrementally: Local + Arc, Local + Arc + Polygon, etc.
+    // This allows us to see the marginal benefit of adding each chain
+    
+    // Sort remote pools by priority (Arc first, then others)
+    const sortedRemotePools = [...remotePools].sort((a, b) => {
+      if (a.chain === 'arc') return -1;
+      if (b.chain === 'arc') return 1;
+      return 0;
+    });
+    
+    // Build incremental combinations
+    for (let i = 0; i < sortedRemotePools.length; i++) {
+      // Take first i+1 remote pools (incremental)
+      const remoteCombo = sortedRemotePools.slice(0, i + 1);
+      const allPoolsForOption = [...localPools, ...remoteCombo];
+      const chains = [...new Set(allPoolsForOption.map(p => p.chain))];
+      const remoteChains = chains.filter(c => c !== sourceChain);
       
-      for (const remoteCombo of combinations) {
-        const allPoolsForOption = [...localPools, ...remoteCombo];
-        const chains = [...new Set(allPoolsForOption.map(p => p.chain))];
-        const remoteChains = chains.filter(c => c !== sourceChain);
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log(`📋 OPTION ${routingOptions.length + 1}: Local + ${remoteChains.join(' + ')}`);
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log(`   Pools used: ${allPoolsForOption.length} (${localPools.length} local, ${remoteCombo.length} remote)`);
+      console.log(`   Chains: ${chains.join(' → ')}`);
+      
+      // Calculate gross output from all pools
+      const grossOutput = this.calculateTotalOutput(allPoolsForOption, amountIn);
+      
+      // Calculate gas cost: user pays for all operations
+      // - Local swap gas on user chain
+      // - CCTP transfer fees (per remote chain, for USDC)
+      // - Gateway wrapping fees (per remote chain, for FLX)
+      // - LayerZero message fees (per remote chain)
+      let gasCostUSD = this.chainGasCostsUSD[sourceChain] || this.localGasCostUSD;
+      
+      // Add costs for each remote chain
+      for (const remoteChain of remoteChains) {
+        // Base gas for operations on remote chain
+        const chainGas = this.chainGasCostsUSD[remoteChain] || 0.001;
+        gasCostUSD += chainGas;
         
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.log(`📋 OPTION ${routingOptions.length + 1}: Local + ${remoteChains.join(', ')}`);
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.log(`   Pools used: ${allPoolsForOption.length} (${localPools.length} local, ${remoteCombo.length} remote)`);
-        console.log(`   Chains: ${chains.join(', ')}`);
-        
-        // Calculate gross output from all pools
-        const grossOutput = this.calculateTotalOutput(allPoolsForOption, amountIn);
-        
-        // Calculate gas cost: local gas + per-chain gas costs + CCTP fees
-        // Each remote chain requires: local gas + CCTP transfer fee
-        let gasCostUSD = this.chainGasCostsUSD[sourceChain] || this.localGasCostUSD;
-        
-        // Add gas and CCTP fees for each remote chain
-        for (const remoteChain of remoteChains) {
-          const chainGas = this.chainGasCostsUSD[remoteChain] || 0.001;
-          gasCostUSD += chainGas + this.cctpTransferFeeUSD;
+        // CCTP fee for USDC transfers (if USDC is involved)
+        const isUSDCInvolved = tokenIn.toLowerCase().includes('usdc') || 
+                              tokenOut.toLowerCase().includes('usdc') ||
+                              tokenIn === '0x3600000000000000000000000000000000000000' ||
+                              tokenOut === '0x3600000000000000000000000000000000000000';
+        if (isUSDCInvolved) {
+          gasCostUSD += this.cctpTransferFeeUSD;
+          console.log(`     + CCTP fee for ${remoteChain}: $${this.cctpTransferFeeUSD.toFixed(2)}`);
         }
         
-        // Convert gas cost to token terms
-        const gasCostToken = this.convertGasCostToToken(gasCostUSD, tokenOut, validPools);
+        // Gateway fee for FLX wrapping (if FLX is involved)
+        const isFLXInvolved = this.getLogicalToken(tokenIn, sourceChain) === 'FLX' ||
+                             this.getLogicalToken(tokenOut, sourceChain) === 'FLX';
+        if (isFLXInvolved) {
+          // Gateway wrapping has minimal fee (just gas), already included in chainGas
+          console.log(`     + Gateway wrapping for ${remoteChain}: included in chain gas`);
+        }
         
-        // Net output = Gross output - Gas cost (in tokens)
-        const netOutput = grossOutput > gasCostToken ? grossOutput - gasCostToken : 0n;
-        
-        console.log(`   Gross Output: ${grossOutput.toString()} (raw)`);
-        console.log(`   Gas Cost (USD): $${gasCostUSD.toFixed(2)}`);
-        console.log(`   Gas Cost (Token): ${gasCostToken.toString()} (raw)`);
-        console.log(`   Net Output: ${netOutput.toString()} (raw)`);
-        
-        routingOptions.push({
-          name: `Local + ${remoteChains.join(', ')}`,
-          pools: allPoolsForOption,
-          chains: chains,
-          remoteChains: remoteChains,
-          grossOutput: grossOutput,
-          gasCostUSD: gasCostUSD,
-          gasCostToken: gasCostToken,
-          netOutput: netOutput
-        });
-        console.log('');
+        // LayerZero message fee (per message)
+        const lzFee = 0.01; // Estimated LayerZero fee
+        gasCostUSD += lzFee;
+        console.log(`     + LayerZero message for ${remoteChain}: $${lzFee.toFixed(2)}`);
       }
+      
+      // Convert gas cost to token terms
+      const gasCostToken = this.convertGasCostToToken(gasCostUSD, tokenOut, validPools);
+      
+      // Net output = Gross output - Gas cost (in tokens)
+      const netOutput = grossOutput > gasCostToken ? grossOutput - gasCostToken : 0n;
+      
+      // Calculate marginal benefit vs previous option
+      const previousOption = routingOptions[routingOptions.length - 1];
+      const marginalBenefit = previousOption 
+        ? (Number(netOutput) - Number(previousOption.netOutput)) / Math.pow(10, tokenOut?.toLowerCase().includes('usdc') ? 6 : 18)
+        : Number(netOutput) / Math.pow(10, tokenOut?.toLowerCase().includes('usdc') ? 6 : 18);
+      
+      console.log(`   Gross Output: ${grossOutput.toString()} (raw)`);
+      console.log(`   Gas Cost (USD): $${gasCostUSD.toFixed(4)}`);
+      console.log(`   Gas Cost (Token): ${gasCostToken.toString()} (raw)`);
+      console.log(`   Net Output: ${netOutput.toString()} (raw)`);
+      if (previousOption) {
+        console.log(`   Marginal Benefit: ${marginalBenefit >= 0 ? '+' : ''}${marginalBenefit.toFixed(6)} ${tokenOut?.toLowerCase().includes('usdc') ? 'USDC' : 'FLX'}`);
+      }
+      
+      routingOptions.push({
+        name: `Local + ${remoteChains.join(' + ')}`,
+        pools: allPoolsForOption,
+        chains: chains,
+        remoteChains: remoteChains,
+        grossOutput: grossOutput,
+        gasCostUSD: gasCostUSD,
+        gasCostToken: gasCostToken,
+        netOutput: netOutput,
+        marginalBenefit: marginalBenefit,
+        tokenOut: tokenOut
+      });
+      console.log('');
     }
 
     // Find best option (highest net output)

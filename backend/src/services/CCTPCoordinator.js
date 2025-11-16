@@ -38,8 +38,15 @@ export class CCTPCoordinator {
       avalanche: 'Avalanche_Fuji', // Bridge Kit likely only supports Avalanche_Fuji (testnet), not mainnet
       optimism: 'Optimism_Sepolia', // Use testnet if mainnet not available
       arbitrum: 'Arbitrum_Sepolia', // Use testnet if mainnet not available
+      'arbitrum-sepolia': 'Arbitrum_Sepolia',
+      avalanche: 'Avalanche_Fuji', // Bridge Kit likely only supports Avalanche_Fuji (testnet), not mainnet
+      'avalanche-fuji': 'Avalanche_Fuji',
+      optimism: 'Optimism_Sepolia', // Use testnet if mainnet not available
+      'optimism-sepolia': 'Optimism_Sepolia',
       polygon: 'Polygon_Amoy', // Use testnet if mainnet not available
-      arc: 'Arc_Testnet' // Bridge Kit uses "Arc_Testnet" for Arc testnet
+      arc: 'Arc_Testnet', // Bridge Kit uses "Arc_Testnet" for Arc testnet
+      'codex-testnet': 'Codex_Testnet', // May need to verify Bridge Kit support
+      'unichain-sepolia': 'Unichain_Sepolia' // May need to verify Bridge Kit support
     };
 
     // Private key for signing transactions (from env)
@@ -84,6 +91,8 @@ export class CCTPCoordinator {
       'optimism-sepolia': process.env.OPTIMISM_SEPOLIA_RPC_URL || process.env.OPTIMISM_RPC_URL || 'https://sepolia.optimism.io',
       arbitrum: process.env.ARBITRUM_RPC_URL || process.env.ARBITRUM_SEPOLIA_RPC_URL || 'https://sepolia-rollup.arbitrum.io/rpc',
       'arbitrum-sepolia': process.env.ARBITRUM_SEPOLIA_RPC_URL || process.env.ARBITRUM_RPC_URL || 'https://sepolia-rollup.arbitrum.io/rpc',
+      'codex-testnet': process.env.CODEX_TESTNET_RPC_URL || process.env.CODEX_RPC_URL || 'https://812242.rpc.thirdweb.com',
+      'unichain-sepolia': process.env.UNICHAIN_SEPOLIA_RPC_URL || process.env.UNICHAIN_RPC_URL || '',
       arc: process.env.ARC_RPC_URL || 'https://hidden-cosmological-thunder.arc-testnet.quiknode.pro/e18d2b4649fda2fd51ef9f5a2c1d7d8fd132c886'
     };
 
@@ -93,9 +102,15 @@ export class CCTPCoordinator {
       basesepolia: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
       'base-sepolia': '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
       polygon: process.env.POLYGON_USDC_ADDRESS,
+      'polygon-amoy': process.env.POLYGON_AMOY_USDC_ADDRESS || process.env.POLYGON_USDC_ADDRESS,
       avalanche: process.env.AVALANCHE_USDC_ADDRESS,
+      'avalanche-fuji': process.env.AVALANCHE_FUJI_USDC_ADDRESS || process.env.AVALANCHE_USDC_ADDRESS,
       optimism: process.env.OPTIMISM_USDC_ADDRESS,
+      'optimism-sepolia': process.env.OPTIMISM_SEPOLIA_USDC_ADDRESS || process.env.OPTIMISM_USDC_ADDRESS,
       arbitrum: process.env.ARBITRUM_USDC_ADDRESS,
+      'arbitrum-sepolia': process.env.ARBITRUM_SEPOLIA_USDC_ADDRESS || process.env.ARBITRUM_USDC_ADDRESS,
+      'codex-testnet': process.env.CODEX_TESTNET_USDC_ADDRESS || process.env.CODEX_USDC_ADDRESS,
+      'unichain-sepolia': process.env.UNICHAIN_SEPOLIA_USDC_ADDRESS || process.env.UNICHAIN_USDC_ADDRESS,
       arc: process.env.ARC_USDC_ADDRESS || '0x3600000000000000000000000000000000000000' // Arc native USDC (NativeFiatTokenV2_2 Proxy)
     };
     

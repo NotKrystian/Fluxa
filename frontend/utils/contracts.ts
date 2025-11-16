@@ -7,11 +7,12 @@
 import { ethers } from 'ethers';
 
 // Contract addresses (from deployment)
+// Check for both old and new environment variable names for compatibility
 export const CONTRACTS = {
-  ROUTER: process.env.NEXT_PUBLIC_ARC_ROUTER_ADDRESS || '',
-  FACTORY: process.env.NEXT_PUBLIC_ARC_FACTORY_ADDRESS || '',
-  USDC: process.env.NEXT_PUBLIC_ARC_USDC_ADDRESS || '',
-  EURC: process.env.NEXT_PUBLIC_ARC_EURC_ADDRESS || '',
+  ROUTER: process.env.NEXT_PUBLIC_ARC_ROUTER_ADDRESS || process.env.NEXT_PUBLIC_ARC_ROUTER || '',
+  FACTORY: process.env.NEXT_PUBLIC_ARC_FACTORY_ADDRESS || process.env.NEXT_PUBLIC_ARC_AMM_FACTORY || process.env.NEXT_PUBLIC_ARC_VAULT_FACTORY || '',
+  USDC: process.env.NEXT_PUBLIC_ARC_USDC_ADDRESS || process.env.NEXT_PUBLIC_ARC_USDC || '0x3600000000000000000000000000000000000000',
+  EURC: process.env.NEXT_PUBLIC_ARC_EURC_ADDRESS || process.env.NEXT_PUBLIC_ARC_EURC || '0x3600000000000000000000000000000000000000',
 };
 
 // Arc RPC

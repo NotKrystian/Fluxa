@@ -97,6 +97,19 @@ export const apiClient = {
     return response.data.data;
   },
 
+  // Execute swap (new architecture - user always on same chain)
+  async executeSwap(request: {
+    tokenIn: string;
+    tokenOut: string;
+    amountIn: string;
+    minAmountOut: string;
+    userChain: string;
+    userAddress: string;
+  }): Promise<any> {
+    const response = await api.post('/api/swap', request);
+    return response.data;
+  },
+
   // Execute high-value swap with multi-chain routing
   async executeHighValueSwap(request: HighValueSwapRequest): Promise<HighValueSwapResponse> {
     const response = await api.post('/api/execute-highvalue', request);
@@ -238,6 +251,96 @@ export const apiClient = {
 
   async getGatewayWithdrawalStatus(withdrawalId: string): Promise<any> {
     const response = await api.get(`/api/gateway/withdrawal-status/${withdrawalId}`);
+    return response.data.data;
+  },
+
+  // Deployment endpoints
+  async getAvailableChains(): Promise<Array<{ key: string; name: string; chainId: number; explorer: string }>> {
+    const response = await api.get('/api/deployment/chains');
+    return response.data.data;
+  },
+
+  // Dev endpoints
+  async deployFactory(params: {
+    chain: string;
+    factoryType: 'vault' | 'amm';
+    privateKey: string;
+  }): Promise<{ success: boolean; data?: any; error?: string }> {
+    const response = await api.post('/api/dev/deploy-factory', params);
+    return response.data;
+  },
+
+  async createVault(params: {
+    chain: string;
+    tokenAddress?: string;
+    tokenName?: string;
+    tokenSymbol?: string;
+    vaultName: string;
+    vaultSymbol: string;
+    privateKey: string;
+  }): Promise<{ success: boolean; data?: any; error?: string }> {
+    const response = await api.post('/api/dev/create-vault', params);
+    return response.data;
+  },
+
+  async deployTokenMultichain(params: {
+    sourceChain: string;
+    tokenAddress?: string;
+    tokenName?: string;
+    tokenSymbol?: string;
+    destinationChains: string[];
+    privateKey: string;
+  }): Promise<{ success: boolean; data?: any; error?: string }> {
+    const response = await api.post('/api/dev/deploy-token-multichain', params);
+    return response.data;
+  },
+
+  async distributeUSDCCCTP(params: {
+    sourceChain: string;
+    amount: string; // USDC amount (human-readable)
+    destinationChains: string[];
+    privateKey: string;
+  }): Promise<{ success: boolean; data?: any; error?: string }> {
+    const response = await api.post('/api/dev/distribute-usdc-cctp', params);
+    return response.data;
+  },
+
+  async distributeGateway(params: {
+    sourceChain: string;
+    amount: string; // USDC amount (human-readable, 6 decimals)
+    destinationChains: string[];
+    privateKey: string;
+  }): Promise<{ success: boolean; data?: any; error?: string }> {
+    const response = await api.post('/api/dev/distribute-gateway', params);
+    return response.data;
+  },
+
+  async estimateGasCosts(request: {
+    selectedChains: string[];
+    privateKey: string;
+  }): Promise<Record<string, {
+    chain: string;
+    nativeCurrency: string;
+    currentBalance: string;
+    estimatedRequired: string;
+    hasEnough: boolean;
+    walletAddress: string;
+    error?: string;
+  }>> {
+    const response = await api.post('/api/deployment/estimate-gas', request);
+    return response.data.data;
+  },
+
+  async deployContracts(request: {
+    selectedChains: string[];
+    tokenAddress?: string;
+    tokenAmount: string;
+    usdcAmount: string;
+    depositor: string;
+    recipient: string;
+    privateKey: string;
+  }): Promise<{ step1_contracts: Record<string, any> }> {
+    const response = await api.post('/api/deployment/deploy', request);
     return response.data.data;
   },
 };

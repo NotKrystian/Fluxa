@@ -1,0 +1,13 @@
+{
+  "chain": "Arc Testnet",
+  "chainId": 5042002,
+  "deployer": "0xe8f14cD50Cfa48e366142815D2b63263849400cE",
+  "coordinator": "0xe8f14cD50Cfa48e366142815D2b63263849400cE",
+  "timestamp": "2025-11-16T05:17:45.124Z",
+  "token": {
+    "address": "0xcAabDfB6b9E1Cb899670e1bF417B42Ff2DB97CaA"
+  },
+  "gateway": {
+    "address": "0x2c435cd7F80469e043c59cb7668EB79c518ec0aD"
+  }
+}

@@ -356,15 +356,15 @@ contract ArcMetaRouter is Ownable {
             );
             
             // Reset approval first (required for some tokens like USDC)
-            inToken.safeApprove(vault, 0);
+            inToken.approve(vault, 0);
             // Approve vault to spend tokens from router
-            inToken.safeApprove(vault, netAmount);
+            inToken.approve(vault, netAmount);
             
             // Execute swap in vault (vault pulls tokens from router via safeTransferFrom)
             amountOut = vaultContract.swap(tokenIn, netAmount, minAmountOut, recipient);
             
             // Reset approval
-            inToken.safeApprove(vault, 0);
+            inToken.approve(vault, 0);
         } else {
             // Fall back to AMM factory/pool
             require(address(ammFactory) != address(0), "NO_VAULT_OR_POOL");
@@ -422,8 +422,8 @@ contract ArcMetaRouter is Ownable {
         }
 
         // Approve TokenMessenger to burn netAmount USDC
-        token.safeApprove(address(tokenMessenger), 0); // reset
-        token.safeApprove(address(tokenMessenger), netAmount);
+        token.approve(address(tokenMessenger), 0); // reset
+        token.approve(address(tokenMessenger), netAmount);
 
         if (useHook) {
             nonce = tokenMessenger.depositForBurnWithHook(
@@ -483,8 +483,8 @@ contract ArcMetaRouter is Ownable {
         }
 
         // Approve GatewayWallet to take tokens
-        erc20.safeApprove(address(gatewayWallet), 0);
-        erc20.safeApprove(address(gatewayWallet), netAmount);
+        erc20.approve(address(gatewayWallet), 0);
+        erc20.approve(address(gatewayWallet), netAmount);
 
         if (useDepositFor) {
             gatewayWallet.depositFor(token, depositor, netAmount);

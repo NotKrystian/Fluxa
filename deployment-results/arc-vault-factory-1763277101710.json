@@ -1,0 +1,15 @@
+{
+  "network": "Arc Testnet",
+  "chainId": 5042002,
+  "timestamp": 1763277101710,
+  "deployer": "0xe8f14cD50Cfa48e366142815D2b63263849400cE",
+  "contracts": {
+    "VaultFactory": "0xda838f8CB8B33a9bB07BA2A3F662F3Bb833e328F",
+    "USDC": "0x3600000000000000000000000000000000000000"
+  },
+  "config": {
+    "swapFeeBps": "30",
+    "feeRecipient": "0xe8f14cD50Cfa48e366142815D2b63263849400cE",
+    "governance": "0xe8f14cD50Cfa48e366142815D2b63263849400cE"
+  }
+}

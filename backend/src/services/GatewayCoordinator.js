@@ -30,11 +30,16 @@ export class GatewayCoordinator {
       'base-sepolia': process.env.BASE_SEPOLIA_GATEWAY_WALLET || process.env.BASE_GATEWAY_WALLET || ethers.ZeroAddress,
       polygon: process.env.POLYGON_GATEWAY_WALLET || process.env.POLYGON_AMOY_GATEWAY_WALLET || ethers.ZeroAddress,
       'polygon-amoy': process.env.POLYGON_AMOY_GATEWAY_WALLET || process.env.POLYGON_GATEWAY_WALLET || ethers.ZeroAddress,
+      'arbitrum-sepolia': process.env.ARBITRUM_SEPOLIA_GATEWAY_WALLET || process.env.ARBITRUM_GATEWAY_WALLET || ethers.ZeroAddress,
+      'avalanche-fuji': process.env.AVALANCHE_FUJI_GATEWAY_WALLET || process.env.AVALANCHE_GATEWAY_WALLET || ethers.ZeroAddress,
+      'optimism-sepolia': process.env.OPTIMISM_SEPOLIA_GATEWAY_WALLET || process.env.OPTIMISM_GATEWAY_WALLET || ethers.ZeroAddress,
+      'codex-testnet': process.env.CODEX_TESTNET_GATEWAY_WALLET || process.env.CODEX_GATEWAY_WALLET || ethers.ZeroAddress,
+      'unichain-sepolia': process.env.UNICHAIN_SEPOLIA_GATEWAY_WALLET || process.env.UNICHAIN_GATEWAY_WALLET || ethers.ZeroAddress,
       arc: process.env.ARC_GATEWAY_WALLET || '0x0077777d7EBA4688BDeF3E311b846F25870A19B9' // Arc testnet
     };
     
     // Supported chains for Gateway operations
-    this.supportedChains = ['arc', 'base', 'basesepolia', 'base-sepolia', 'polygon', 'polygon-amoy'];
+    this.supportedChains = ['arc', 'base', 'basesepolia', 'base-sepolia', 'polygon', 'polygon-amoy', 'arbitrum-sepolia', 'avalanche-fuji', 'optimism-sepolia', 'codex-testnet', 'unichain-sepolia'];
 
     // Private key for signing transactions
     this.privateKey = process.env.GATEWAY_PRIVATE_KEY || process.env.CCTP_PRIVATE_KEY;

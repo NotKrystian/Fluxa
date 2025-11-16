@@ -1,0 +1,13 @@
+{
+  "chain": "Base Sepolia",
+  "chainId": 84532,
+  "deployer": "0xe8f14cD50Cfa48e366142815D2b63263849400cE",
+  "coordinator": "0xe8f14cD50Cfa48e366142815D2b63263849400cE",
+  "timestamp": "2025-11-16T07:08:58.260Z",
+  "wrappedToken": {
+    "address": "0xd40532214c18590d6738976cf27231577048eEa4"
+  },
+  "gateway": {
+    "address": "0xa658d6e55471438227B76817B850f6Cbec63123B"
+  }
+}

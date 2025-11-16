@@ -767,7 +767,7 @@
   "linkReferences": {},
   "deployedLinkReferences": {},
   "immutableReferences": {
-    "1840": [
+    "1988": [
       {
         "length": 32,
         "start": 2433
@@ -777,7 +777,7 @@
         "start": 2517
       }
     ],
-    "1843": [
+    "1991": [
       {
         "length": 32,
         "start": 345
@@ -827,7 +827,7 @@
         "start": 6550
       }
     ],
-    "1846": [
+    "1994": [
       {
         "length": 32,
         "start": 416
@@ -877,7 +877,7 @@
         "start": 5223
       }
     ],
-    "1854": [
+    "2002": [
       {
         "length": 32,
         "start": 3876
@@ -899,7 +899,7 @@
         "start": 6230
       }
     ],
-    "1857": [
+    "2005": [
       {
         "length": 32,
         "start": 6129
@@ -909,7 +909,7 @@
         "start": 8153
       }
     ],
-    "1860": [
+    "2008": [
       {
         "length": 32,
         "start": 3396
@@ -925,5 +925,5 @@
     ]
   },
   "inputSourceName": "project/core/ArcAMMPool.sol",
-  "buildInfoId": "solc-0_8_20-e66ff15ed3fc38f38d2c14f03b1fe5a96abebf22"
+  "buildInfoId": "solc-0_8_20-d28463d23b44ac532776f4a9192ef718a5c6bac4"
 }

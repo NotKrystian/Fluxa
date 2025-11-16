@@ -1,0 +1,14 @@
+{
+  "chain": "Base Sepolia",
+  "chainId": 84532,
+  "deployer": "0xe8f14cD50Cfa48e366142815D2b63263849400cE",
+  "coordinator": "0xe8f14cD50Cfa48e366142815D2b63263849400cE",
+  "timestamp": "2025-11-16T04:19:23.891Z",
+  "token": {
+    "address": "0x4B7deC385C4440939ab6E3C6D7E8240F600C09f8",
+    "symbol": "FLX"
+  },
+  "gateway": {
+    "address": "0x4A39155398924F0e1BA491DEC54E5cbF970Bd9DD"
+  }
+}

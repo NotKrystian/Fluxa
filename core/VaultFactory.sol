@@ -22,6 +22,9 @@ contract VaultFactory {
     /// @notice USDC token address on this chain
     address public immutable usdc;
 
+    /// @notice Gateway address for cross-chain liquidity aggregation
+    address public gateway;
+
     /// @notice Mapping of projectToken => vault address
     mapping(address => address) public getVault;
 
@@ -54,6 +57,7 @@ contract VaultFactory {
 
     event FeeRecipientUpdated(address indexed newFeeRecipient);
     event ProtocolFeeUpdated(uint256 newFeeBps);
+    event GatewayUpdated(address indexed oldGateway, address indexed newGateway);
 
     // ============================================================================
     // Errors
@@ -68,7 +72,7 @@ contract VaultFactory {
     // Constructor
     // ============================================================================
 
-    constructor(address _usdc, address _feeRecipient, uint24 _swapFeeBps) {
+    constructor(address _usdc, address _feeRecipient, uint24 _swapFeeBps, address _gateway) {
         if (_usdc == address(0) || _feeRecipient == address(0)) {
             revert InvalidAddress();
         }
@@ -78,6 +82,7 @@ contract VaultFactory {
         feeRecipient = _feeRecipient;
         protocolFeeBps = 10; // 0.1% default
         swapFeeBps = _swapFeeBps; // Default 30 (0.30%)
+        gateway = _gateway; // Can be address(0) initially and set later
     }
 
     // ============================================================================
@@ -122,7 +127,8 @@ contract VaultFactory {
             symbol,
             swapFeeBps,
             feeRecipient,
-            uint24(protocolFeeBps)
+            uint24(protocolFeeBps),
+            gateway  // Pass gateway address to vault
         ));
 
         // Register vault
@@ -175,6 +181,16 @@ contract VaultFactory {
         if (newFeeBps > 1000) revert FeeTooHigh(); // Max 10%
         protocolFeeBps = newFeeBps;
         emit ProtocolFeeUpdated(newFeeBps);
+    }
+
+    /**
+     * @notice Set gateway address for cross-chain aggregation
+     * @param newGateway New gateway address
+     */
+    function setGateway(address newGateway) external onlyGovernance {
+        address oldGateway = gateway;
+        gateway = newGateway;
+        emit GatewayUpdated(oldGateway, newGateway);
     }
 
     /**

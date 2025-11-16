@@ -15,7 +15,7 @@ export interface TokenRegistry$Type {
   readonly deployedLinkReferences: {};
   readonly immutableReferences: {};
   readonly inputSourceName: "project/core/TokenRegistry.sol";
-  readonly buildInfoId: "solc-0_8_20-e66ff15ed3fc38f38d2c14f03b1fe5a96abebf22";
+  readonly buildInfoId: "solc-0_8_20-d28463d23b44ac532776f4a9192ef718a5c6bac4";
 };
 
 import "hardhat/types/artifacts";

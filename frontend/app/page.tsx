@@ -162,7 +162,7 @@ export default function Home() {
       {/* Stats */}
       <div className="grid grid-cols-4 gap-4 mt-8">
         <div className="text-center p-4">
-          <div className="text-3xl font-bold text-arc-blue">4+</div>
+          <div className="text-3xl font-bold text-arc-blue">8</div>
           <div className="text-sm text-gray-600 dark:text-gray-400">Chains</div>
         </div>
         <div className="text-center p-4">

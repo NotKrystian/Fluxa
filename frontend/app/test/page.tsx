@@ -2,9 +2,10 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { ethers } from 'ethers'
-import { Send, ArrowRight, RefreshCw, CheckCircle, XCircle, Clock, Globe, Zap } from 'lucide-react'
+import { Send, ArrowRight, RefreshCw, CheckCircle, XCircle, Clock, Globe, Zap, Coins, Plus } from 'lucide-react'
 import { getSigner, isConnectedToArc, switchToArc, getTokenBalance, parseTokenAmount, formatTokenAmount, CONTRACTS } from '@/utils/contracts'
 import apiClient from '@/utils/api'
+import SmartSwapRouter from '@/components/SmartSwapRouter'
 
 const SUPPORTED_CHAINS = ['arc', 'base', 'polygon', 'avalanche', 'optimism', 'arbitrum']
 
@@ -51,25 +52,39 @@ export default function TestPage() {
     return GAS_ESTIMATES[chainLower] || (chainLower === 'arc' ? { amount: '0.05', token: 'USDC' } : { amount: '0.001', token: 'ETH' })
   }
   
-  // Gateway State
-  const [gatewayChain, setGatewayChain] = useState('arc')
-  const [gatewayToken, setGatewayToken] = useState('')
-  const [gatewayAmount, setGatewayAmount] = useState('')
-  const [gatewayDepositor, setGatewayDepositor] = useState('')
-  const [gatewayUseOnChain, setGatewayUseOnChain] = useState(true)
-  const [gatewayLoading, setGatewayLoading] = useState(false)
-  const [gatewayStatus, setGatewayStatus] = useState<any>(null)
+  // Gateway State (Arc → Base simplified flow)
+  const [gatewayDepositAmount, setGatewayDepositAmount] = useState('')
+  const [gatewayWithdrawAmount, setGatewayWithdrawAmount] = useState('')
+  const [gatewayDepositPriorityFee, setGatewayDepositPriorityFee] = useState('0') // FLX priority fee
+  const [gatewayWithdrawPriorityFee, setGatewayWithdrawPriorityFee] = useState('0') // wFLX priority fee
+  const [gatewayDepositing, setGatewayDepositing] = useState(false)
+  const [gatewayWithdrawing, setGatewayWithdrawing] = useState(false)
+  const [gatewayDepositStatus, setGatewayDepositStatus] = useState<any>(null)
+  const [gatewayWithdrawStatus, setGatewayWithdrawStatus] = useState<any>(null)
   const [gatewayError, setGatewayError] = useState('')
-  const [gatewayBalance, setGatewayBalance] = useState('0')
+  const [flxBalance, setFlxBalance] = useState('0') // FLX on Arc
+  const [wflxBalance, setWflxBalance] = useState('0') // wFLX on Base
   
-  // Withdrawal State
-  const [withdrawTargetChain, setWithdrawTargetChain] = useState('arc')
-  const [withdrawToken, setWithdrawToken] = useState('')
-  const [withdrawAmount, setWithdrawAmount] = useState('')
-  const [withdrawRecipient, setWithdrawRecipient] = useState('')
-  const [withdrawLoading, setWithdrawLoading] = useState(false)
-  const [withdrawStatus, setWithdrawStatus] = useState<any>(null)
-  const [withdrawError, setWithdrawError] = useState('')
+  // Vault Creation State
+  const [vaultCreating, setVaultCreating] = useState(false)
+  const [vaultStatus, setVaultStatus] = useState<any>(null)
+  const [vaultError, setVaultError] = useState('')
+  const [arcVaultAddress, setArcVaultAddress] = useState<string | null>(null)
+  const [baseVaultAddress, setBaseVaultAddress] = useState<string | null>(null)
+  
+  // Deployment addresses from environment variables
+  const ARC_FLX_TOKEN = process.env.NEXT_PUBLIC_ARC_FLX_TOKEN || '0xcAabDfB6b9E1Cb899670e1bF417B42Ff2DB97CaA'
+  const ARC_GATEWAY = process.env.NEXT_PUBLIC_ARC_GATEWAY || '0x2c435cd7F80469e043c59cb7668EB79c518ec0aD'
+  const ARC_USDC = process.env.NEXT_PUBLIC_ARC_USDC || '0x3600000000000000000000000000000000000000' // Native USDC on Arc
+  const ARC_VAULT_FACTORY = process.env.NEXT_PUBLIC_ARC_VAULT_FACTORY || '0x9c2F8d66C84E332e94E03D1eDea85BD2828F4683'
+  
+  const BASE_WRAPPED_TOKEN = process.env.NEXT_PUBLIC_BASE_WRAPPED_TOKEN || '0x194522f914E8aEf3c8C405094F2e069B146aE58b'
+  const BASE_GATEWAY = process.env.NEXT_PUBLIC_BASE_GATEWAY || '0xE1d0a7Dc776565426461565fA921b9dcdc45C94B'
+  const BASE_USDC = process.env.NEXT_PUBLIC_BASE_USDC || '0x036CbD53842c5426634e7929541eC2318f3dCF7e'
+  const BASE_VAULT_FACTORY = process.env.NEXT_PUBLIC_BASE_VAULT_FACTORY || '0x92117cF45074230380E6a078A6077E653Ce54FFB'
+  
+  // Backend API URL
+  const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001'
 
   // Connect wallet
   const connectWallet = async () => {
@@ -84,8 +99,6 @@ export default function TestPage() {
       setUserAddress(address)
       setConnected(true)
       setCctpRecipient(address)
-      setGatewayDepositor(address)
-      setWithdrawRecipient(address)
 
       const onArc = await isConnectedToArc()
       setIsArcNetwork(onArc)
@@ -93,6 +106,9 @@ export default function TestPage() {
       if (onArc) {
         await updateBalances(address)
       }
+      
+      // Refresh gateway balances (FLX on Arc, wFLX on Base)
+      await refreshGatewayBalances()
     } catch (err: any) {
       setCctpError(err.message)
     }
@@ -815,113 +831,448 @@ export default function TestPage() {
     }
   }
 
-  // Gateway Deposit
+  // Gateway Deposit (Arc → Base): Deposit FLX on Arc, get wFLX on Base
   const handleGatewayDeposit = async () => {
-    if (!gatewayAmount || parseFloat(gatewayAmount) <= 0) {
+    if (!gatewayDepositAmount || parseFloat(gatewayDepositAmount) <= 0) {
       setGatewayError('Please enter a valid amount')
       return
     }
 
-    if (!gatewayToken) {
-      setGatewayError('Please enter token address')
+    if (!userAddress) {
+      setGatewayError('Please connect wallet')
       return
     }
 
-    setGatewayLoading(true)
+    setGatewayDepositing(true)
     setGatewayError('')
-    setGatewayStatus(null)
+    setGatewayDepositStatus(null)
 
     try {
-      // Get token decimals (assume 6 for USDC, 18 for others)
-      const isUSDC = gatewayToken.toLowerCase().includes('usdc') || 
-                     gatewayToken.toLowerCase() === CONTRACTS.USDC?.toLowerCase()
-      const decimals = isUSDC ? 6 : 18
-      const amountWei = parseTokenAmount(gatewayAmount, decimals)
+      console.log('[Gateway Deposit] Starting FLX deposit on Arc...')
       
-      const result = await apiClient.depositToGateway({
-        chain: gatewayChain,
-        token: gatewayToken,
-        amount: amountWei.toString(),
-        depositor: gatewayDepositor || userAddress,
-        useOnChain: gatewayUseOnChain
-      })
-
-      setGatewayStatus(result)
+      // Check if wallet is on Arc
+      if (typeof window === 'undefined' || !window.ethereum) {
+        throw new Error('MetaMask not found')
+      }
       
-      // Refresh balance
-      if (gatewayDepositor || userAddress) {
-        setTimeout(() => {
-          apiClient.getGatewayBalance(gatewayDepositor || userAddress, gatewayToken)
-            .then(balance => {
-              const formatted = formatTokenAmount(balance.toString(), 6)
-              setGatewayBalance(formatted)
-            })
-            .catch(() => {})
-        }, 2000)
+      const provider = new ethers.BrowserProvider(window.ethereum)
+      const network = await provider.getNetwork()
+      const ARC_CHAIN_ID = 5042002
+      
+      if (Number(network.chainId) !== ARC_CHAIN_ID) {
+        setGatewayDepositStatus({ message: 'Please switch to Arc Testnet...' })
+        try {
+          await window.ethereum.request({
+            method: 'wallet_switchEthereumChain',
+            params: [{ chainId: `0x${ARC_CHAIN_ID.toString(16)}` }],
+          })
+          await new Promise(resolve => setTimeout(resolve, 1000))
+        } catch (switchError: any) {
+          if (switchError.code === 4902) {
+            throw new Error('Arc Testnet not found in wallet. Please add it first.')
+          }
+          throw switchError
+        }
+      }
+      
+      const signer = await provider.getSigner()
+      const amount = parseTokenAmount(gatewayDepositAmount, 18) // FLX has 18 decimals
+      const priorityFee = parseTokenAmount(gatewayDepositPriorityFee || '0', 18) // Priority fee in FLX
+      const totalAmount = amount + priorityFee // Total = amount + priority fee
+      
+      // Create FLX token contract
+      const flxContract = new ethers.Contract(
+        ARC_FLX_TOKEN,
+        ['function approve(address spender, uint256 amount) returns (bool)', 'function allowance(address owner, address spender) view returns (uint256)', 'function balanceOf(address) view returns (uint256)'],
+        signer
+      )
+      
+      // Check balance
+      setGatewayDepositStatus({ message: 'Checking FLX balance...' })
+      const balance = await flxContract.balanceOf(userAddress)
+      console.log(`[Gateway Deposit] FLX Balance: ${ethers.formatUnits(balance, 18)} FLX`)
+      console.log(`[Gateway Deposit] Required (amount + fee): ${ethers.formatUnits(totalAmount, 18)} FLX (${gatewayDepositAmount} + ${gatewayDepositPriorityFee || '0'} priority fee)`)
+      
+      if (balance < totalAmount) {
+        throw new Error(`❌ Insufficient FLX balance!\n\nYou have: ${ethers.formatUnits(balance, 18)} FLX\nNeed: ${ethers.formatUnits(totalAmount, 18)} FLX (${gatewayDepositAmount} FLX + ${gatewayDepositPriorityFee || '0'} FLX priority fee)\n\nThe FLX token was deployed with MockERC20 which auto-mints 1 billion tokens to the deployer.\n\nYou need to transfer some FLX from the deployer wallet to your wallet first.`)
+      }
+      
+      // Check and approve if needed (must approve amount + priority fee)
+      setGatewayDepositStatus({ message: 'Checking approval...' })
+      const allowance = await flxContract.allowance(userAddress, ARC_GATEWAY)
+      console.log(`[Gateway Deposit] Current Allowance: ${ethers.formatUnits(allowance, 18)} FLX`)
+      
+      if (allowance < totalAmount) {
+        setGatewayDepositStatus({ message: 'Approving FLX (amount + priority fee)...' })
+        console.log(`[Gateway Deposit] Approving ${ethers.formatUnits(totalAmount, 18)} FLX to Gateway...`)
+        const approveTx = await flxContract.approve(ARC_GATEWAY, totalAmount)
+        setGatewayDepositStatus({ message: `Approval TX sent: ${approveTx.hash}` })
+        await approveTx.wait()
+        console.log(`[Gateway Deposit] ✓ Approval confirmed`)
+      } else {
+        console.log(`[Gateway Deposit] ✓ Already approved`)
+      }
+      
+      // Call depositForWrap on Arc Gateway
+      setGatewayDepositStatus({ message: 'Depositing FLX to Gateway...' })
+      const gatewayContract = new ethers.Contract(
+        ARC_GATEWAY,
+        ['function depositForWrap(uint256 amount, uint32 destinationChain, address destinationRecipient, uint256 priorityFee) external returns (uint256)', 'function token() view returns (address)', 'function isSource() view returns (bool)'],
+        signer
+      )
+      
+      // Verify gateway configuration
+      try {
+        const tokenAddr = await gatewayContract.token()
+        const isSource = await gatewayContract.isSource()
+        console.log(`[Gateway Deposit] Gateway token: ${tokenAddr}`)
+        console.log(`[Gateway Deposit] Gateway isSource: ${isSource}`)
+        
+        if (tokenAddr.toLowerCase() !== ARC_FLX_TOKEN.toLowerCase()) {
+          throw new Error(`Gateway token mismatch! Expected ${ARC_FLX_TOKEN}, got ${tokenAddr}`)
+        }
+        if (!isSource) {
+          throw new Error(`Gateway is not configured as source! isSource = ${isSource}`)
       }
     } catch (err: any) {
+        console.warn('[Gateway Deposit] Could not verify gateway config:', err.message)
+      }
+      
+      const BASE_CHAIN_ID = 84532
+      console.log(`[Gateway Deposit] Calling depositForWrap(${ethers.formatUnits(amount, 18)}, ${BASE_CHAIN_ID}, ${userAddress}, ${ethers.formatUnits(priorityFee, 18)})...`)
+      if (priorityFee > 0n) {
+        console.log(`[Gateway Deposit] 🚀 Priority fee: ${ethers.formatUnits(priorityFee, 18)} FLX - Your transaction will be processed faster!`)
+      }
+      
+      const depositTx = await gatewayContract.depositForWrap(
+        amount,
+        BASE_CHAIN_ID,
+        userAddress,
+        priorityFee
+      )
+      
+      setGatewayDepositStatus({ message: `Transaction sent: ${depositTx.hash}`, txHash: depositTx.hash })
+      await depositTx.wait()
+      
+      setGatewayDepositStatus({ 
+        message: '✅ FLX deposited on Arc! Backend will mint wFLX on Base shortly...', 
+        txHash: depositTx.hash,
+        success: true
+      })
+      setGatewayDepositAmount('')
+      
+      // Refresh balances
+      setTimeout(() => refreshGatewayBalances(), 2000)
+    } catch (err: any) {
+      console.error('[Gateway Deposit] Error:', err)
       setGatewayError(err.message || 'Gateway deposit failed')
-      console.error('Gateway error:', err)
     } finally {
-      setGatewayLoading(false)
+      setGatewayDepositing(false)
     }
   }
 
-  // Gateway Withdrawal
+  // Gateway Withdrawal (Base → Arc): Burn wFLX on Base, get FLX on Arc
   const handleGatewayWithdraw = async () => {
-    if (!withdrawAmount || parseFloat(withdrawAmount) <= 0) {
-      setWithdrawError('Please enter a valid amount')
+    if (!gatewayWithdrawAmount || parseFloat(gatewayWithdrawAmount) <= 0) {
+      setGatewayError('Please enter a valid amount')
       return
     }
 
-    if (!withdrawToken) {
-      setWithdrawError('Please enter token address')
+    if (!userAddress) {
+      setGatewayError('Please connect wallet')
       return
     }
 
-    setWithdrawLoading(true)
-    setWithdrawError('')
-    setWithdrawStatus(null)
+    setGatewayWithdrawing(true)
+    setGatewayError('')
+    setGatewayWithdrawStatus(null)
 
     try {
-      // Get token decimals
-      const isUSDC = withdrawToken.toLowerCase().includes('usdc') || 
-                     withdrawToken.toLowerCase() === CONTRACTS.USDC?.toLowerCase()
-      const decimals = isUSDC ? 6 : 18
-      const amountWei = parseTokenAmount(withdrawAmount, decimals)
+      console.log('[Gateway Withdraw] Starting wFLX burn on Base...')
       
-      const result = await apiClient.withdrawFromGateway({
-        token: withdrawToken,
-        amount: amountWei.toString(),
-        targetChain: withdrawTargetChain,
-        recipient: withdrawRecipient || userAddress,
-        depositor: gatewayDepositor || userAddress
+      // Check if wallet is on Base
+      if (typeof window === 'undefined' || !window.ethereum) {
+        throw new Error('MetaMask not found')
+      }
+      
+      const provider = new ethers.BrowserProvider(window.ethereum)
+      const network = await provider.getNetwork()
+      const BASE_CHAIN_ID = 84532
+      
+      if (Number(network.chainId) !== BASE_CHAIN_ID) {
+        setGatewayWithdrawStatus({ message: 'Please switch to Base Sepolia...' })
+        try {
+          await window.ethereum.request({
+            method: 'wallet_switchEthereumChain',
+            params: [{ chainId: `0x${BASE_CHAIN_ID.toString(16)}` }],
+          })
+          await new Promise(resolve => setTimeout(resolve, 1000))
+        } catch (switchError: any) {
+          if (switchError.code === 4902) {
+            throw new Error('Base Sepolia not found in wallet. Please add it first.')
+          }
+          throw switchError
+        }
+      }
+      
+      const signer = await provider.getSigner()
+      const amount = parseTokenAmount(gatewayWithdrawAmount, 18) // wFLX has 18 decimals
+      const priorityFee = parseTokenAmount(gatewayWithdrawPriorityFee || '0', 18) // Priority fee in wFLX
+      const totalAmount = amount + priorityFee // Total to burn = amount + priority fee
+      
+      // Create wFLX token contract
+      const wflxContract = new ethers.Contract(
+        BASE_WRAPPED_TOKEN,
+        ['function approve(address spender, uint256 amount) returns (bool)', 'function allowance(address owner, address spender) view returns (uint256)', 'function balanceOf(address) view returns (uint256)'],
+        signer
+      )
+      
+      // Check balance (need amount + priority fee)
+      setGatewayWithdrawStatus({ message: 'Checking wFLX balance...' })
+      const balance = await wflxContract.balanceOf(userAddress)
+      console.log(`[Gateway Withdraw] wFLX Balance: ${ethers.formatUnits(balance, 18)} wFLX`)
+      console.log(`[Gateway Withdraw] Required (amount + fee): ${ethers.formatUnits(totalAmount, 18)} wFLX (${gatewayWithdrawAmount} + ${gatewayWithdrawPriorityFee || '0'} priority fee)`)
+      
+      if (balance < totalAmount) {
+        throw new Error(`Insufficient wFLX balance. You have ${ethers.formatUnits(balance, 18)} wFLX, need ${ethers.formatUnits(totalAmount, 18)} wFLX (${gatewayWithdrawAmount} wFLX + ${gatewayWithdrawPriorityFee || '0'} wFLX priority fee)`)
+      }
+      
+      // Check and approve if needed (Gateway will burn amount + priority fee)
+      setGatewayWithdrawStatus({ message: 'Checking approval...' })
+      const allowance = await wflxContract.allowance(userAddress, BASE_GATEWAY)
+      if (allowance < totalAmount) {
+        setGatewayWithdrawStatus({ message: 'Approving wFLX (amount + priority fee)...' })
+        const approveTx = await wflxContract.approve(BASE_GATEWAY, totalAmount)
+        await approveTx.wait()
+      }
+      
+      // Call burnForUnwrap on Base Gateway
+      setGatewayWithdrawStatus({ message: 'Burning wFLX on Base...' })
+      const gatewayContract = new ethers.Contract(
+        BASE_GATEWAY,
+        ['function burnForUnwrap(uint256 amount, uint32 originChain, address originRecipient, uint256 priorityFee) external'],
+        signer
+      )
+      
+      const ARC_CHAIN_ID = 5042002
+      console.log(`[Gateway Withdraw] Calling burnForUnwrap(${ethers.formatUnits(amount, 18)}, ${ARC_CHAIN_ID}, ${userAddress}, ${ethers.formatUnits(priorityFee, 18)})...`)
+      if (priorityFee > 0n) {
+        console.log(`[Gateway Withdraw] 🚀 Priority fee: ${ethers.formatUnits(priorityFee, 18)} wFLX - Your transaction will be processed faster!`)
+      }
+      
+      const burnTx = await gatewayContract.burnForUnwrap(
+        amount,
+        ARC_CHAIN_ID,
+        userAddress,
+        priorityFee
+      )
+      
+      setGatewayWithdrawStatus({ message: `Transaction sent: ${burnTx.hash}`, txHash: burnTx.hash })
+      await burnTx.wait()
+      
+      setGatewayWithdrawStatus({ 
+        message: '✅ wFLX burned on Base! Backend will release FLX on Arc shortly...', 
+        txHash: burnTx.hash,
+        success: true
       })
-
-      setWithdrawStatus(result)
+      setGatewayWithdrawAmount('')
+      
+      // Refresh balances
+      setTimeout(() => refreshGatewayBalances(), 2000)
     } catch (err: any) {
-      setWithdrawError(err.message || 'Gateway withdrawal failed')
-      console.error('Withdrawal error:', err)
+      console.error('[Gateway Withdraw] Error:', err)
+      setGatewayError(err.message || 'Gateway withdrawal failed')
     } finally {
-      setWithdrawLoading(false)
+      setGatewayWithdrawing(false)
     }
   }
 
-  // Refresh Gateway balance
-  const refreshGatewayBalance = async () => {
-    if (!gatewayToken || (!gatewayDepositor && !userAddress)) return
+  // Refresh Gateway balances
+  const refreshGatewayBalances = async () => {
+    if (!userAddress) return
     
     try {
-      const balance = await apiClient.getGatewayBalance(
-        gatewayDepositor || userAddress,
-        gatewayToken
+      // Get FLX balance on Arc
+      const arcRpcUrl = process.env.NEXT_PUBLIC_ARC_RPC_URL || 'https://hidden-cosmological-thunder.arc-testnet.quiknode.pro/e18d2b4649fda2fd51ef9f5a2c1d7d8fd132c886'
+      const arcProvider = new ethers.JsonRpcProvider(arcRpcUrl)
+      const flxContract = new ethers.Contract(
+        ARC_FLX_TOKEN,
+        ['function balanceOf(address) view returns (uint256)'],
+        arcProvider
       )
-      const formatted = formatTokenAmount(balance.toString(), 6)
-      setGatewayBalance(formatted)
+      const flxBal = await flxContract.balanceOf(userAddress)
+      setFlxBalance(ethers.formatUnits(flxBal, 18))
+      console.log(`[Balance] Using Arc RPC: ${arcRpcUrl.substring(0, 50)}...`)
+      console.log(`[Balance] FLX Token: ${ARC_FLX_TOKEN}`)
+      console.log(`[Balance] User Address: ${userAddress}`)
+      console.log(`[Balance] FLX on Arc: ${ethers.formatUnits(flxBal, 18)} FLX`)
+      
+      // Get wFLX balance on Base
+      const baseRpcUrl = process.env.NEXT_PUBLIC_BASE_SEPOLIA_RPC_URL || 'https://sepolia.base.org'
+      const baseProvider = new ethers.JsonRpcProvider(baseRpcUrl)
+      const wflxContract = new ethers.Contract(
+        BASE_WRAPPED_TOKEN,
+        ['function balanceOf(address) view returns (uint256)'],
+        baseProvider
+      )
+      const wflxBal = await wflxContract.balanceOf(userAddress)
+      setWflxBalance(ethers.formatUnits(wflxBal, 18))
+      console.log(`[Balance] Using Base RPC: ${baseRpcUrl.substring(0, 50)}...`)
+      console.log(`[Balance] wFLX Token: ${BASE_WRAPPED_TOKEN}`)
+      console.log(`[Balance] wFLX on Base: ${ethers.formatUnits(wflxBal, 18)} wFLX`)
     } catch (err) {
-      console.error('Error fetching Gateway balance:', err)
+      console.error('Error refreshing Gateway balances:', err)
     }
   }
+
+  // Check if vaults exist
+  const checkVaults = async () => {
+    try {
+      // Check Arc vault
+      const arcRpcUrl = process.env.NEXT_PUBLIC_ARC_RPC_URL || 'https://hidden-cosmological-thunder.arc-testnet.quiknode.pro/e18d2b4649fda2fd51ef9f5a2c1d7d8fd132c886'
+      const arcProvider = new ethers.JsonRpcProvider(arcRpcUrl)
+      const arcFactory = new ethers.Contract(
+        ARC_VAULT_FACTORY,
+        ['function getVault(address) view returns (address)'],
+        arcProvider
+      )
+      const arcVault = await arcFactory.getVault(ARC_FLX_TOKEN)
+      if (arcVault !== ethers.ZeroAddress) {
+        setArcVaultAddress(arcVault)
+        console.log('[Vaults] Arc vault found:', arcVault)
+      }
+
+      // Check Base vault
+      const baseRpcUrl = process.env.NEXT_PUBLIC_BASE_SEPOLIA_RPC_URL || 'https://sepolia.base.org'
+      const baseProvider = new ethers.JsonRpcProvider(baseRpcUrl)
+      const baseFactory = new ethers.Contract(
+        BASE_VAULT_FACTORY,
+        ['function getVault(address) view returns (address)'],
+        baseProvider
+      )
+      const baseVault = await baseFactory.getVault(BASE_WRAPPED_TOKEN)
+      if (baseVault !== ethers.ZeroAddress) {
+        setBaseVaultAddress(baseVault)
+        console.log('[Vaults] Base vault found:', baseVault)
+      }
+    } catch (err) {
+      console.error('Error checking vaults:', err)
+    }
+  }
+
+  // Create vault on Arc or Base using backend API
+  const createVault = async (chain: 'arc' | 'base') => {
+    if (!userAddress) {
+      setVaultError('Please connect wallet')
+      return
+    }
+
+    setVaultCreating(true)
+    setVaultError('')
+    setVaultStatus(null)
+
+    try {
+      const isArc = chain === 'arc'
+      const chainName = isArc ? 'Arc Testnet' : 'Base Sepolia'
+      const projectToken = isArc ? ARC_FLX_TOKEN : BASE_WRAPPED_TOKEN
+
+      console.log(`[Vault Creation] Creating vault on ${chainName}...`)
+      console.log(`[Vault Creation] Token Address: ${projectToken}`)
+
+      // Get signer for signing transaction
+      if (typeof window === 'undefined' || !window.ethereum) {
+        throw new Error('MetaMask not found')
+      }
+
+      const provider = new ethers.BrowserProvider(window.ethereum)
+      const signer = await provider.getSigner()
+      
+      // Backend will use its own private key from .env
+      setVaultStatus({ message: 'Calling backend API to create vault...' })
+      console.log(`[Vault Creation] Calling backend API: ${BACKEND_URL}/api/dev/create-vault`)
+
+      // Call backend API (backend will use PRIVATE_KEY from its .env)
+      const response = await fetch(`${BACKEND_URL}/api/dev/create-vault`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          chain: chain,
+          tokenAddress: projectToken
+          // privateKey is optional - backend will use its own PRIVATE_KEY from .env
+        })
+      })
+
+      const result = await response.json()
+
+      // Handle vault already exists error
+      if (!result.success && result.error?.includes('Vault already exists')) {
+        const existingVaultMatch = result.error.match(/0x[a-fA-F0-9]{40}/)
+        const existingVaultAddress = existingVaultMatch ? existingVaultMatch[0] : result.existingVault
+        
+        console.log(`[Vault Creation] ℹ️ Vault already exists:`, existingVaultAddress)
+        console.log(`[Vault Creation] ℹ️ Token Info:`, result.tokenInfo)
+
+        setVaultStatus({
+          message: `✅ Vault already exists!`,
+          vaultAddress: existingVaultAddress,
+          tokenInfo: result.tokenInfo,
+          success: true
+        })
+
+        if (isArc) {
+          setArcVaultAddress(existingVaultAddress)
+        } else {
+          setBaseVaultAddress(existingVaultAddress)
+        }
+
+        // Refresh vault status
+        setTimeout(() => checkVaults(), 1000)
+        return
+      }
+
+      if (!result.success) {
+        throw new Error(result.error || 'Vault creation failed')
+      }
+
+      const { token, vault } = result.data
+
+      console.log(`[Vault Creation] ✅ Token Info:`, token)
+      console.log(`[Vault Creation] ✅ Vault Created:`, vault)
+
+      setVaultStatus({
+        message: `✅ ${token.name} vault created!`,
+        txHash: vault.transactionHash,
+        vaultAddress: vault.address,
+        tokenInfo: token,
+        success: true
+      })
+
+      if (isArc) {
+        setArcVaultAddress(vault.address)
+      } else {
+        setBaseVaultAddress(vault.address)
+      }
+
+      // Refresh vault status
+      setTimeout(() => checkVaults(), 2000)
+
+    } catch (err: any) {
+      console.error('[Vault Creation] Error:', err)
+      setVaultError(err.message || 'Vault creation failed')
+    } finally {
+      setVaultCreating(false)
+    }
+  }
+  
+  // Auto-refresh balances when user connects
+  useEffect(() => {
+    if (connected && userAddress) {
+      refreshGatewayBalances()
+      checkVaults()
+    }
+  }, [connected, userAddress])
 
   // Refresh CCTP wallet balance with gas estimates
   // Memoize to prevent infinite loops
@@ -1433,94 +1784,245 @@ export default function TestPage() {
           </div>
         </div>
 
-        {/* Gateway Deposit Section */}
+        {/* Vault Creation Section */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <Coins className="w-5 h-5 text-green-600" />
+            <h2 className="text-xl font-semibold">💰 Create Liquidity Vaults</h2>
+          </div>
+          <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+            Create FLX/USDC vault on Arc and wFLX/USDC vault on Base to enable swaps
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Arc Vault */}
+            <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-semibold text-lg">Arc: FLX/USDC</h3>
+                {arcVaultAddress ? (
+                  <span className="text-xs bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 px-2 py-1 rounded">
+                    ✅ Exists
+                  </span>
+                ) : (
+                  <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 px-2 py-1 rounded">
+                    Not Created
+                  </span>
+                )}
+              </div>
+
+              {arcVaultAddress ? (
+                <div className="space-y-2">
+                  <p className="text-xs text-gray-600 dark:text-gray-400">Vault Address:</p>
+                  <p className="font-mono text-xs bg-gray-100 dark:bg-gray-700 p-2 rounded break-all">
+                    {arcVaultAddress}
+                  </p>
+                </div>
+              ) : (
+                <button
+                  onClick={() => createVault('arc')}
+                  disabled={vaultCreating || !userAddress}
+                  className="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {vaultCreating ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      Creating...
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="w-4 h-4" />
+                      Create Arc Vault
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+
+            {/* Base Vault */}
+            <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-semibold text-lg">Base: wFLX/USDC</h3>
+                {baseVaultAddress ? (
+                  <span className="text-xs bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 px-2 py-1 rounded">
+                    ✅ Exists
+                  </span>
+                ) : (
+                  <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 px-2 py-1 rounded">
+                    Not Created
+                  </span>
+                )}
+              </div>
+
+              {baseVaultAddress ? (
+                <div className="space-y-2">
+                  <p className="text-xs text-gray-600 dark:text-gray-400">Vault Address:</p>
+                  <p className="font-mono text-xs bg-gray-100 dark:bg-gray-700 p-2 rounded break-all">
+                    {baseVaultAddress}
+                  </p>
+                </div>
+              ) : (
+                <button
+                  onClick={() => createVault('base')}
+                  disabled={vaultCreating || !userAddress}
+                  className="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {vaultCreating ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      Creating...
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="w-4 h-4" />
+                      Create Base Vault
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Status Messages */}
+          {vaultStatus && (
+            <div className={`mt-4 p-3 border rounded-lg ${
+              vaultStatus.success
+                ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
+                : 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
+            }`}>
+              <div className="flex items-center gap-2 mb-2 text-sm">
+                {vaultStatus.success ? (
+                  <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-400" />
+                ) : (
+                  <RefreshCw className="w-4 h-4 text-blue-600 dark:text-blue-400 animate-spin" />
+                )}
+                <span className={vaultStatus.success ? 'text-green-700 dark:text-green-300' : 'text-blue-700 dark:text-blue-300'}>
+                  {vaultStatus.message}
+                </span>
+              </div>
+              
+              {/* Token Info (fetched automatically from blockchain) */}
+              {vaultStatus.tokenInfo && (
+                <div className="mt-2 p-2 bg-white dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700">
+                  <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Token Information:</p>
+                  <div className="grid grid-cols-3 gap-2 text-xs">
+                    <div>
+                      <span className="text-gray-500 dark:text-gray-400">Name:</span>
+                      <p className="font-medium text-gray-700 dark:text-gray-300">{vaultStatus.tokenInfo.name}</p>
+                    </div>
+                    <div>
+                      <span className="text-gray-500 dark:text-gray-400">Symbol:</span>
+                      <p className="font-medium text-gray-700 dark:text-gray-300">{vaultStatus.tokenInfo.symbol}</p>
+                    </div>
+                    <div>
+                      <span className="text-gray-500 dark:text-gray-400">Decimals:</span>
+                      <p className="font-medium text-gray-700 dark:text-gray-300">{vaultStatus.tokenInfo.decimals}</p>
+                    </div>
+                  </div>
+                  <p className="text-xs font-mono text-gray-500 dark:text-gray-400 mt-1 break-all">
+                    {vaultStatus.tokenInfo.address}
+                  </p>
+                </div>
+              )}
+              
+              {vaultStatus.vaultAddress && (
+                <p className="text-xs font-mono text-gray-600 dark:text-gray-400 mt-2 break-all">
+                  Vault: {vaultStatus.vaultAddress}
+                </p>
+              )}
+              {vaultStatus.txHash && (
+                <a
+                  href={`https://testnet.arcscan.com/tx/${vaultStatus.txHash}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-blue-600 dark:text-blue-400 hover:underline mt-1 block"
+                >
+                  View Transaction →
+                </a>
+              )}
+            </div>
+          )}
+
+          {vaultError && (
+            <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+              <div className="flex items-center gap-2 text-red-600 dark:text-red-400">
+                <XCircle className="w-4 h-4" />
+                <span className="text-sm">{vaultError}</span>
+              </div>
+            </div>
+          )}
+
+          <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+            <p className="text-xs text-blue-700 dark:text-blue-300">
+              <strong>Info:</strong> Vaults are AMM pools (FLX/USDC on Arc, wFLX/USDC on Base). 
+              After creating, you can add liquidity and enable swaps. Each chain needs its own vault.
+            </p>
+          </div>
+        </div>
+
+        {/* Gateway Deposit Section (Arc → Base) */}
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
           <div className="flex items-center gap-2 mb-4">
             <Globe className="w-5 h-5 text-purple-600" />
-            <h2 className="text-xl font-semibold">Gateway Deposit</h2>
+            <h2 className="text-xl font-semibold">Gateway: Deposit FLX (Arc → Base)</h2>
           </div>
           <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-            Deposit tokens to Circle Gateway for cross-chain transfers.
+            Deposit FLX on Arc to receive wFLX on Base
           </p>
 
           <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">Chain</label>
-              <select
-                value={gatewayChain}
-                onChange={(e) => setGatewayChain(e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg dark:bg-gray-700"
-              >
-                {SUPPORTED_CHAINS.map(chain => (
-                  <option key={chain} value={chain}>{chain}</option>
-                ))}
-              </select>
+            <div className="p-3 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg">
+              <p className="text-xs text-purple-700 dark:text-purple-300">
+                <strong>Flow:</strong> Deposit FLX on Arc → Backend monitors → Mint wFLX on Base
+              </p>
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-1">Token Address</label>
-              <input
-                type="text"
-                value={gatewayToken}
-                onChange={(e) => setGatewayToken(e.target.value)}
-                placeholder={CONTRACTS.USDC || "0x..."}
-                className="w-full px-3 py-2 border rounded-lg dark:bg-gray-700"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-1">Amount</label>
+              <label className="block text-sm font-medium mb-1">Amount (FLX)</label>
               <input
                 type="number"
-                value={gatewayAmount}
-                onChange={(e) => setGatewayAmount(e.target.value)}
+                value={gatewayDepositAmount}
+                onChange={(e) => setGatewayDepositAmount(e.target.value)}
                 placeholder="100.0"
                 step="0.01"
                 className="w-full px-3 py-2 border rounded-lg dark:bg-gray-700"
               />
+              <p className="text-xs text-gray-500 mt-1">FLX Balance on Arc: {flxBalance}</p>
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-1">Depositor Address</label>
+              <label className="block text-sm font-medium mb-1">🚀 Priority Fee (FLX) - Optional</label>
               <input
-                type="text"
-                value={gatewayDepositor}
-                onChange={(e) => setGatewayDepositor(e.target.value)}
-                placeholder={userAddress || "0x..."}
+                type="number"
+                value={gatewayDepositPriorityFee}
+                onChange={(e) => setGatewayDepositPriorityFee(e.target.value)}
+                placeholder="0"
+                step="0.01"
+                min="0"
                 className="w-full px-3 py-2 border rounded-lg dark:bg-gray-700"
               />
+              <p className="text-xs text-gray-500 mt-1">Pay extra FLX to get processed faster! Higher fee = higher priority.</p>
             </div>
 
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="gateway-onchain"
-                checked={gatewayUseOnChain}
-                onChange={(e) => setGatewayUseOnChain(e.target.checked)}
-                className="w-4 h-4"
-              />
-              <label htmlFor="gateway-onchain" className="text-sm">Use On-Chain Gateway Wallet</label>
+            <div className="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-700 rounded text-xs">
+            <div>
+                <p className="text-gray-600 dark:text-gray-400">FLX (Arc):</p>
+                <p className="font-mono text-xs text-gray-500">{ARC_FLX_TOKEN.slice(0, 10)}...</p>
             </div>
-
-            <div className="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-700 rounded">
-              <span className="text-sm">Gateway Balance:</span>
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-mono">{gatewayBalance}</span>
                 <button
-                  onClick={refreshGatewayBalance}
+                onClick={refreshGatewayBalances}
                   className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
+                title="Refresh balances"
                 >
                   <RefreshCw className="w-3 h-3" />
                 </button>
-              </div>
             </div>
 
             <button
               onClick={handleGatewayDeposit}
-              disabled={gatewayLoading}
+              disabled={gatewayDepositing}
               className="w-full px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 flex items-center justify-center gap-2"
             >
-              {gatewayLoading ? (
+              {gatewayDepositing ? (
                 <>
                   <RefreshCw className="w-4 h-4 animate-spin" />
                   Depositing...
@@ -1528,147 +2030,256 @@ export default function TestPage() {
               ) : (
                 <>
                   <Send className="w-4 h-4" />
-                  Deposit to Gateway
+                  Deposit FLX on Arc
                 </>
               )}
             </button>
 
-            {gatewayError && (
-              <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-                <div className="flex items-center gap-2 text-red-600 dark:text-red-400">
-                  <XCircle className="w-4 h-4" />
-                  <span className="text-sm">{gatewayError}</span>
-                </div>
-              </div>
-            )}
-
-            {gatewayStatus && (
-              <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
-                <div className="flex items-center gap-2 text-green-600 dark:text-green-400 mb-2">
+            {gatewayDepositStatus && (
+              <div className={`p-3 border rounded-lg ${
+                gatewayDepositStatus.success
+                  ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
+                  : 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
+              }`}>
+                <div className={`flex items-center gap-2 mb-2 ${
+                  gatewayDepositStatus.success
+                    ? 'text-green-600 dark:text-green-400'
+                    : 'text-blue-600 dark:text-blue-400'
+                }`}>
+                  {gatewayDepositStatus.success ? (
                   <CheckCircle className="w-4 h-4" />
-                  <span className="text-sm font-medium">Deposit Complete</span>
-                </div>
-                <div className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
-                  {gatewayStatus.txHash && (
-                    <p>TX: {gatewayStatus.txHash.slice(0, 10)}...</p>
+                  ) : (
+                    <Clock className="w-4 h-4" />
                   )}
-                  {gatewayStatus.id && (
-                    <p>Deposit ID: {gatewayStatus.id}</p>
-                  )}
+                  <span className="text-sm font-medium">{gatewayDepositStatus.message}</span>
                 </div>
+                {gatewayDepositStatus.txHash && (
+                  <p className="text-xs text-gray-600 dark:text-gray-400">
+                    TX: {gatewayDepositStatus.txHash.slice(0, 10)}...
+                  </p>
+                  )}
               </div>
             )}
           </div>
         </div>
       </div>
 
-      {/* Gateway Withdrawal Section */}
+      {/* Gateway Withdrawal Section (Base → Arc) */}
       <div className="mt-6 bg-white dark:bg-gray-800 rounded-lg shadow p-6">
         <div className="flex items-center gap-2 mb-4">
           <ArrowRight className="w-5 h-5 text-orange-600" />
-          <h2 className="text-xl font-semibold">Gateway Withdrawal</h2>
+          <h2 className="text-xl font-semibold">Gateway: Burn wFLX (Base → Arc)</h2>
         </div>
         <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-          Withdraw tokens from Gateway to a destination chain (mints on destination).
+          Burn wFLX on Base to receive FLX back on Arc
         </p>
 
-        <div className="grid md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium mb-1">Target Chain</label>
-            <select
-              value={withdrawTargetChain}
-              onChange={(e) => setWithdrawTargetChain(e.target.value)}
-              className="w-full px-3 py-2 border rounded-lg dark:bg-gray-700"
-            >
-              {SUPPORTED_CHAINS.map(chain => (
-                <option key={chain} value={chain}>{chain}</option>
-              ))}
-            </select>
+        <div className="space-y-4">
+          <div className="p-3 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg">
+            <p className="text-xs text-orange-700 dark:text-orange-300">
+              <strong>Flow:</strong> Burn wFLX on Base → Backend monitors → Release FLX on Arc
+            </p>
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">Token Address</label>
-            <input
-              type="text"
-              value={withdrawToken}
-              onChange={(e) => setWithdrawToken(e.target.value)}
-              placeholder={CONTRACTS.USDC || "0x..."}
-              className="w-full px-3 py-2 border rounded-lg dark:bg-gray-700"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-1">Amount</label>
+            <label className="block text-sm font-medium mb-1">Amount (wFLX)</label>
             <input
               type="number"
-              value={withdrawAmount}
-              onChange={(e) => setWithdrawAmount(e.target.value)}
+              value={gatewayWithdrawAmount}
+              onChange={(e) => setGatewayWithdrawAmount(e.target.value)}
               placeholder="100.0"
               step="0.01"
               className="w-full px-3 py-2 border rounded-lg dark:bg-gray-700"
             />
+            <p className="text-xs text-gray-500 mt-1">wFLX Balance on Base: {wflxBalance}</p>
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">Recipient Address</label>
+            <label className="block text-sm font-medium mb-1">🚀 Priority Fee (wFLX) - Optional</label>
             <input
-              type="text"
-              value={withdrawRecipient}
-              onChange={(e) => setWithdrawRecipient(e.target.value)}
-              placeholder={userAddress || "0x..."}
+              type="number"
+              value={gatewayWithdrawPriorityFee}
+              onChange={(e) => setGatewayWithdrawPriorityFee(e.target.value)}
+              placeholder="0"
+              step="0.01"
+              min="0"
               className="w-full px-3 py-2 border rounded-lg dark:bg-gray-700"
             />
+            <p className="text-xs text-gray-500 mt-1">Pay extra wFLX to get processed faster! Higher fee = higher priority.</p>
           </div>
+
+          <div className="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-700 rounded text-xs">
+          <div>
+              <p className="text-gray-600 dark:text-gray-400">wFLX (Base):</p>
+              <p className="font-mono text-xs text-gray-500">{BASE_WRAPPED_TOKEN.slice(0, 10)}...</p>
+          </div>
+            <button
+              onClick={refreshGatewayBalances}
+              className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
+              title="Refresh balances"
+            >
+              <RefreshCw className="w-3 h-3" />
+            </button>
         </div>
 
         <button
           onClick={handleGatewayWithdraw}
-          disabled={withdrawLoading}
-          className="mt-4 w-full px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 flex items-center justify-center gap-2"
+            disabled={gatewayWithdrawing}
+            className="w-full px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 flex items-center justify-center gap-2"
         >
-          {withdrawLoading ? (
+            {gatewayWithdrawing ? (
             <>
               <RefreshCw className="w-4 h-4 animate-spin" />
-              Withdrawing...
+                Burning...
             </>
           ) : (
             <>
               <ArrowRight className="w-4 h-4" />
-              Withdraw from Gateway
+                Burn wFLX on Base
             </>
           )}
         </button>
 
-        {withdrawError && (
-          <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+          {gatewayError && (
+            <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
             <div className="flex items-center gap-2 text-red-600 dark:text-red-400">
               <XCircle className="w-4 h-4" />
-              <span className="text-sm">{withdrawError}</span>
+                <span className="text-sm">{gatewayError}</span>
             </div>
           </div>
         )}
 
-        {withdrawStatus && (
-          <div className="mt-4 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
-            <div className="flex items-center gap-2 text-green-600 dark:text-green-400 mb-2">
+          {gatewayWithdrawStatus && (
+            <div className={`p-3 border rounded-lg ${
+              gatewayWithdrawStatus.success
+                ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
+                : 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
+            }`}>
+              <div className={`flex items-center gap-2 mb-2 ${
+                gatewayWithdrawStatus.success
+                  ? 'text-green-600 dark:text-green-400'
+                  : 'text-blue-600 dark:text-blue-400'
+              }`}>
+                {gatewayWithdrawStatus.success ? (
               <CheckCircle className="w-4 h-4" />
-              <span className="text-sm font-medium">Withdrawal Initiated</span>
+                ) : (
+                  <Clock className="w-4 h-4" />
+                )}
+                <span className="text-sm font-medium">{gatewayWithdrawStatus.message}</span>
             </div>
-            <div className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
-              {withdrawStatus.id && (
-                <p>Withdrawal ID: {withdrawStatus.id}</p>
+              {gatewayWithdrawStatus.txHash && (
+                <p className="text-xs text-gray-600 dark:text-gray-400">
+                  TX: {gatewayWithdrawStatus.txHash.slice(0, 10)}...
+                </p>
               )}
-              {withdrawStatus.txHash && (
-                <p>TX: {withdrawStatus.txHash.slice(0, 10)}...</p>
+          </div>
+        )}
+        </div>
+
+        {/* Smart Swap Router */}
+        <SmartSwapRouter 
+          userAddress={userAddress}
+          arcVaultAddress={arcVaultAddress}
+          baseVaultAddress={baseVaultAddress}
+        />
+
+        {/* Developer Section - Add Liquidity */}
+        <details className="bg-gray-50 dark:bg-gray-900 rounded-lg shadow p-6 border-2 border-dashed border-gray-300 dark:border-gray-700">
+          <summary className="cursor-pointer text-xl font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+            <Coins className="w-5 h-5" />
+            👨‍💻 Developer: Add Liquidity
+            <span className="text-xs font-normal text-gray-500">(Click to expand)</span>
+          </summary>
+          
+          <div className="mt-4 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+            <p className="text-sm text-yellow-700 dark:text-yellow-300">
+              <strong>⚠️ Developer Tool:</strong> This section is for adding liquidity to vaults for testing. 
+              In production, users would add liquidity through a dedicated LP interface.
+            </p>
+          </div>
+
+          <div className="mt-4 space-y-4">
+            <div className="p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+              <h3 className="font-semibold mb-3">Arc Vault (FLX/USDC)</h3>
+              {arcVaultAddress ? (
+                <div className="space-y-3">
+                  <p className="text-xs font-mono text-gray-600 dark:text-gray-400 break-all">
+                    {arcVaultAddress}
+                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium mb-1">FLX Amount</label>
+                      <input
+                        type="number"
+                        placeholder="1000"
+                        className="w-full px-2 py-1 text-sm border rounded dark:bg-gray-700"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium mb-1">USDC Amount</label>
+                      <input
+                        type="number"
+                        placeholder="5000"
+                        className="w-full px-2 py-1 text-sm border rounded dark:bg-gray-700"
+                      />
+                    </div>
+                  </div>
+                  <button
+                    disabled
+                    className="w-full px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 text-sm"
+                  >
+                    Add Liquidity to Arc Vault
+                  </button>
+                  <p className="text-xs text-gray-500 text-center">Function coming soon</p>
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500">Create Arc vault first</p>
               )}
-              {withdrawStatus.status && (
-                <p>Status: {withdrawStatus.status}</p>
+            </div>
+
+            <div className="p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+              <h3 className="font-semibold mb-3">Base Vault (wFLX/USDC)</h3>
+              {baseVaultAddress ? (
+                <div className="space-y-3">
+                  <p className="text-xs font-mono text-gray-600 dark:text-gray-400 break-all">
+                    {baseVaultAddress}
+                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium mb-1">wFLX Amount</label>
+                      <input
+                        type="number"
+                        placeholder="1000"
+                        className="w-full px-2 py-1 text-sm border rounded dark:bg-gray-700"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium mb-1">USDC Amount</label>
+                      <input
+                        type="number"
+                        placeholder="5000"
+                        className="w-full px-2 py-1 text-sm border rounded dark:bg-gray-700"
+                      />
+                    </div>
+                  </div>
+                  <button
+                    disabled
+                    className="w-full px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 text-sm"
+                  >
+                    Add Liquidity to Base Vault
+                  </button>
+                  <p className="text-xs text-gray-500 text-center">Function coming soon</p>
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500">Create Base vault first</p>
               )}
             </div>
           </div>
-        )}
+        </details>
+
       </div>
     </div>
   )
 }
+
 

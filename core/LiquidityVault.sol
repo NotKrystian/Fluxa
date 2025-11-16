@@ -59,6 +59,9 @@ contract LiquidityVault is ERC20, ReentrancyGuard {
     /// @notice Protocol fee share of swapFee in basis points
     uint24 public immutable protocolFeeShareBps;
 
+    /// @notice Gateway address for cross-chain liquidity aggregation
+    address public immutable gateway;
+
     uint256 private constant BPS = 10_000;
 
     // ============================================================================
@@ -92,12 +95,26 @@ contract LiquidityVault is ERC20, ReentrancyGuard {
         address indexed to
     );
 
+    event LiquidityAggregated(
+        address indexed gateway,
+        uint256 projectTokenAmount,
+        uint256 usdcAmount,
+        uint32 destinationChain
+    );
+
+    event LiquidityReturned(
+        address indexed gateway,
+        uint256 projectTokenAmount,
+        uint256 usdcAmount
+    );
+
     // ============================================================================
     // Errors
     // ============================================================================
 
     error OnlyGovernance();
     error OnlyFactory();
+    error OnlyGateway();
     error DepositsPaused();
     error InsufficientAmount();
     error InvalidAddress();
@@ -119,7 +136,8 @@ contract LiquidityVault is ERC20, ReentrancyGuard {
         string memory _symbol,
         uint24 _swapFeeBps,
         address _protocolFeeRecipient,
-        uint24 _protocolFeeShareBps
+        uint24 _protocolFeeShareBps,
+        address _gateway
     ) ERC20(_name, _symbol) {
         if (_projectToken == address(0) || _usdc == address(0) || _governance == address(0)) {
             revert InvalidAddress();
@@ -134,6 +152,7 @@ contract LiquidityVault is ERC20, ReentrancyGuard {
         swapFeeBps = _swapFeeBps;
         protocolFeeRecipient = _protocolFeeRecipient;
         protocolFeeShareBps = _protocolFeeShareBps;
+        gateway = _gateway; // Can be address(0) and set later
     }
 
     // ============================================================================
@@ -147,6 +166,11 @@ contract LiquidityVault is ERC20, ReentrancyGuard {
 
     modifier onlyFactory() {
         if (msg.sender != factory) revert OnlyFactory();
+        _;
+    }
+
+    modifier onlyGateway() {
+        if (msg.sender != gateway) revert OnlyGateway();
         _;
     }
 
@@ -334,6 +358,69 @@ contract LiquidityVault is ERC20, ReentrancyGuard {
      */
     function getTokens() external view returns (address token0, address token1) {
         return (projectToken, usdc);
+    }
+
+    // ============================================================================
+    // Gateway Functions - CROSS-CHAIN LIQUIDITY AGGREGATION
+    // ============================================================================
+
+    /**
+     * @notice Withdraw liquidity for cross-chain aggregation (Gateway only)
+     * @dev Gateway can drain vault liquidity for cross-chain swaps
+     * @param destinationChain Chain ID where liquidity is being aggregated
+     * @return projectTokenAmount Amount of project token withdrawn
+     * @return usdcAmount Amount of USDC withdrawn
+     */
+    function withdrawForAggregation(uint32 destinationChain) 
+        external 
+        onlyGateway 
+        nonReentrant 
+        returns (uint256 projectTokenAmount, uint256 usdcAmount) 
+    {
+        projectTokenAmount = totalProjectToken;
+        usdcAmount = totalUSDC;
+
+        // Transfer all liquidity to gateway
+        if (projectTokenAmount > 0) {
+            IERC20(projectToken).safeTransfer(gateway, projectTokenAmount);
+        }
+        if (usdcAmount > 0) {
+            IERC20(usdc).safeTransfer(gateway, usdcAmount);
+        }
+
+        // Reset totals (will be repopulated when liquidity returns)
+        totalProjectToken = 0;
+        totalUSDC = 0;
+
+        emit LiquidityAggregated(gateway, projectTokenAmount, usdcAmount, destinationChain);
+
+        return (projectTokenAmount, usdcAmount);
+    }
+
+    /**
+     * @notice Return liquidity after cross-chain aggregation (Gateway only)
+     * @dev Gateway returns liquidity with potentially different proportions after rebalancing
+     * @param projectTokenAmount Amount of project token to return
+     * @param usdcAmount Amount of USDC to return
+     */
+    function returnLiquidity(uint256 projectTokenAmount, uint256 usdcAmount) 
+        external 
+        onlyGateway 
+        nonReentrant 
+    {
+        if (projectTokenAmount == 0 && usdcAmount == 0) revert InsufficientAmount();
+
+        // Transfer liquidity from gateway back to vault
+        if (projectTokenAmount > 0) {
+            IERC20(projectToken).safeTransferFrom(gateway, address(this), projectTokenAmount);
+            totalProjectToken += projectTokenAmount;
+        }
+        if (usdcAmount > 0) {
+            IERC20(usdc).safeTransferFrom(gateway, address(this), usdcAmount);
+            totalUSDC += usdcAmount;
+        }
+
+        emit LiquidityReturned(gateway, projectTokenAmount, usdcAmount);
     }
 
     // ============================================================================

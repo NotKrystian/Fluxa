@@ -22,7 +22,8 @@ export const VAULT_FACTORY_ABI = [
   'function createVault(address projectToken, string name, string symbol) external returns (address)',
   'function getVault(address projectToken) external view returns (address)',
   'function allVaults(uint256) external view returns (address)',
-  'function allVaultsLength() external view returns (uint256)'
+  'function allVaultsLength() external view returns (uint256)',
+  'function getVaultByIndex(uint256) external view returns (address vault, address projectToken)'
 ];
 
 export const ERC20_ABI = [
@@ -52,14 +53,34 @@ export async function depositToVault(
     }
 
     // Get the correct RPC URL for the expected network
-    const rpcUrl = expectedChainId === 5042002 
-      ? 'https://rpc.testnet.arc.network'
-      : expectedChainId === 11155111
-      ? 'https://ethereum-sepolia-rpc.publicnode.com'
-      : null;
+    // Support multiple chains via environment variables or defaults
+    let rpcUrl: string | null = null;
+    
+    if (expectedChainId === 5042002) {
+      // Arc Testnet
+      rpcUrl = process.env.NEXT_PUBLIC_ARC_RPC_URL || 'https://rpc.testnet.arc.network';
+    } else if (expectedChainId === 11155111) {
+      // Ethereum Sepolia
+      rpcUrl = process.env.NEXT_PUBLIC_SEPOLIA_RPC_URL || 'https://ethereum-sepolia-rpc.publicnode.com';
+    } else if (expectedChainId === 84532) {
+      // Base Sepolia
+      rpcUrl = process.env.NEXT_PUBLIC_BASE_SEPOLIA_RPC_URL || 'https://sepolia.base.org';
+    } else if (expectedChainId === 80002) {
+      // Polygon Amoy
+      rpcUrl = process.env.NEXT_PUBLIC_POLYGON_AMOY_RPC_URL || 'https://rpc-amoy.polygon.technology';
+    } else if (expectedChainId === 421614) {
+      // Arbitrum Sepolia
+      rpcUrl = process.env.NEXT_PUBLIC_ARBITRUM_SEPOLIA_RPC_URL || 'https://sepolia-rollup.arbitrum.io/rpc';
+    } else if (expectedChainId === 43113) {
+      // Avalanche Fuji
+      rpcUrl = process.env.NEXT_PUBLIC_AVALANCHE_FUJI_RPC_URL || 'https://api.avax-test.network/ext/bc/C/rpc';
+    } else if (expectedChainId === 11155420) {
+      // Optimism Sepolia
+      rpcUrl = process.env.NEXT_PUBLIC_OPTIMISM_SEPOLIA_RPC_URL || 'https://sepolia.optimism.io';
+    }
     
     if (!rpcUrl) {
-      throw new Error(`Invalid expectedChainId: ${expectedChainId}`);
+      throw new Error(`Unsupported chain ID: ${expectedChainId}. Please add RPC URL configuration for this chain.`);
     }
     
     // Use public RPC provider for contract verification (more reliable)
@@ -74,7 +95,16 @@ export async function depositToVault(
     
     // Verify we're on the expected network
     if (expectedChainId && chainId !== expectedChainId) {
-      const expectedNetwork = expectedChainId === 5042002 ? 'Arc Testnet' : expectedChainId === 11155111 ? 'Sepolia' : `ChainId ${expectedChainId}`;
+      const networkNames: Record<number, string> = {
+        5042002: 'Arc Testnet',
+        11155111: 'Ethereum Sepolia',
+        84532: 'Base Sepolia',
+        80002: 'Polygon Amoy',
+        421614: 'Arbitrum Sepolia',
+        43113: 'Avalanche Fuji',
+        11155420: 'Optimism Sepolia'
+      };
+      const expectedNetwork = networkNames[expectedChainId] || `ChainId ${expectedChainId}`;
       throw new Error(
         `Network mismatch!\n\n` +
         `RPC returned: ${networkName} (chainId: ${chainId})\n` +
@@ -100,10 +130,17 @@ export async function depositToVault(
         rpcUrl
       });
       
-      const networkHint = expectedChainId === 5042002 
-        ? 'Arc Testnet (chainId: 5042002)'
-        : expectedChainId === 11155111
-        ? 'Sepolia (chainId: 11155111)'
+      const networkNames: Record<number, string> = {
+        5042002: 'Arc Testnet',
+        11155111: 'Ethereum Sepolia',
+        84532: 'Base Sepolia',
+        80002: 'Polygon Amoy',
+        421614: 'Arbitrum Sepolia',
+        43113: 'Avalanche Fuji',
+        11155420: 'Optimism Sepolia'
+      };
+      const networkHint = networkNames[expectedChainId] 
+        ? `${networkNames[expectedChainId]} (chainId: ${expectedChainId})`
         : `chainId: ${expectedChainId}`;
       
       throw new Error(
@@ -210,25 +247,62 @@ export async function getVaultInfo(vaultAddress: string, userAddress: string, pr
 
     console.log(`Fetching vault info from ${vaultAddress}...`);
 
-    const [
-      projectToken,
-      usdc,
-      governance,
-      reserves,
-      userShares,
-      totalSupply,
-      totalProjectToken,
-      totalUSDC
-    ] = await Promise.all([
-      vault.projectToken(),
-      vault.usdc(),
-      vault.governance(),
-      vault.getReserves(),
-      vault.balanceOf(userAddress),
-      vault.totalSupply(),
-      vault.totalProjectToken(),
-      vault.totalUSDC()
-    ]);
+    // Fetch vault info with individual error handling for each call
+    let projectToken, usdc, governance, reserves, userShares, totalSupply, totalProjectToken, totalUSDC;
+    
+    try {
+      projectToken = await vault.projectToken();
+    } catch (e: any) {
+      throw new Error(`Failed to fetch projectToken: ${e.message}`);
+    }
+    
+    try {
+      usdc = await vault.usdc();
+    } catch (e: any) {
+      throw new Error(`Failed to fetch usdc: ${e.message}`);
+    }
+    
+    try {
+      governance = await vault.governance();
+    } catch (e: any) {
+      console.warn(`Could not fetch governance, using zero address`);
+      governance = ethers.ZeroAddress;
+    }
+    
+    try {
+      reserves = await vault.getReserves();
+    } catch (e: any) {
+      console.warn(`Could not fetch reserves, using zeros`);
+      reserves = [0n, 0n];
+    }
+    
+    try {
+      userShares = await vault.balanceOf(userAddress);
+    } catch (e: any) {
+      console.warn(`Could not fetch user shares, using zero`);
+      userShares = 0n;
+    }
+    
+    try {
+      totalSupply = await vault.totalSupply();
+    } catch (e: any) {
+      console.warn(`Could not fetch totalSupply, using zero. Error: ${e.message}`);
+      totalSupply = 0n;
+    }
+    
+    try {
+      totalProjectToken = await vault.totalProjectToken();
+    } catch (e: any) {
+      console.warn(`Could not fetch totalProjectToken, using zero`);
+      totalProjectToken = 0n;
+    }
+    
+    try {
+      totalUSDC = await vault.totalUSDC();
+    } catch (e: any) {
+      console.warn(`Could not fetch totalUSDC, using zero`);
+      totalUSDC = 0n;
+    }
 
     console.log('Vault info loaded:', {
       projectToken,
@@ -253,6 +327,89 @@ export async function getVaultInfo(vaultAddress: string, userAddress: string, pr
   } catch (error: any) {
     console.error('Error fetching vault info:', error);
     throw error; // Re-throw to show error message to user
+  }
+}
+
+/**
+ * Get all vaults from VaultFactory and filter by user's token balances
+ */
+export async function getUserVaults(
+  vaultFactoryAddress: string,
+  userAddress: string,
+  provider: ethers.Provider
+): Promise<Array<{ vault: string; projectToken: string; tokenBalance: string; tokenSymbol: string; tokenName: string }>> {
+  try {
+    if (!vaultFactoryAddress || vaultFactoryAddress === ethers.ZeroAddress) {
+      return [];
+    }
+
+    // Check if factory contract exists
+    const factoryCode = await provider.getCode(vaultFactoryAddress);
+    if (factoryCode === '0x') {
+      console.warn(`VaultFactory not found at ${vaultFactoryAddress}`);
+      return [];
+    }
+
+    const factory = new ethers.Contract(vaultFactoryAddress, VAULT_FACTORY_ABI, provider);
+    
+    // Get total number of vaults
+    const vaultCount = await factory.allVaultsLength();
+    console.log(`Found ${vaultCount} vaults in factory`);
+
+    if (vaultCount === 0n) {
+      return [];
+    }
+
+    // Get all vaults and check user's token balances
+    const vaults: Array<{ vault: string; projectToken: string; tokenBalance: string; tokenSymbol: string; tokenName: string }> = [];
+    
+    for (let i = 0; i < Number(vaultCount); i++) {
+      try {
+        const [vaultAddress, projectTokenAddress] = await factory.getVaultByIndex(i);
+        
+        if (vaultAddress === ethers.ZeroAddress || projectTokenAddress === ethers.ZeroAddress) {
+          continue;
+        }
+
+        // Check user's balance of the project token
+        const tokenContract = new ethers.Contract(projectTokenAddress, ERC20_ABI, provider);
+        let balance = 0n;
+        try {
+          balance = await tokenContract.balanceOf(userAddress);
+        } catch (e) {
+          console.warn(`Could not fetch balance for ${projectTokenAddress}:`, e);
+        }
+        
+        // Get token metadata
+        let tokenSymbol = 'TOKEN';
+        let tokenName = 'Token';
+        try {
+          tokenSymbol = await tokenContract.symbol();
+          tokenName = await tokenContract.name();
+        } catch (e) {
+          console.warn(`Could not fetch token metadata for ${projectTokenAddress}:`, e);
+        }
+
+        // Include all vaults (not just ones where user has tokens)
+        // This allows users to see and interact with vaults even if they don't have tokens yet
+        vaults.push({
+          vault: vaultAddress,
+          projectToken: projectTokenAddress,
+          tokenBalance: balance.toString(),
+          tokenSymbol,
+          tokenName
+        });
+      } catch (error: any) {
+        console.warn(`Error fetching vault at index ${i}:`, error.message);
+        continue;
+      }
+    }
+
+    console.log(`Found ${vaults.length} vaults (showing all vaults, not just ones with user tokens)`);
+    return vaults;
+  } catch (error: any) {
+    console.error('Error getting user vaults:', error);
+    return [];
   }
 }
 
